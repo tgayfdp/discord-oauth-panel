@@ -419,17 +419,18 @@ def tunnel_ssh(domain):
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
         bad_prefixes = ("admin.", "console.", "www.", "app.")
+        def good_url(u):
+            if any(u.startswith(f"https://{p}") for p in bad_prefixes): return False
+            if u in ("https://serveo.net", "https://localhost.run"): return False
+            return True
+
         def extract_urls(line):
-            found = []
             for m in re.finditer(rf'(https?://)?[a-z0-9-]+\.{domain.replace(".", "\\.")}', line):
                 u = m.group()
                 if not u.startswith("http"): u = "https://" + u
-                if u not in tunnel_urls:
-                    tunnel_urls.append(u)
-                    found.append(u)
-                    if not any(u.startswith(f"https://{p}") for p in bad_prefixes):
-                        print(f"[+] {domain} URL: {u}")
-            if not found and domain in line:
+                if u not in tunnel_urls: tunnel_urls.append(u)
+                if good_url(u): print(f"[+] {domain} URL: {u}")
+            if domain in line:
                 for w in line.split():
                     if domain in w:
                         u = w.strip('.,;:!?\\"\'()[]{}<>')
@@ -437,8 +438,6 @@ def tunnel_ssh(domain):
                         if u not in tunnel_urls:
                             tunnel_urls.append(u)
                             print(f"[{domain}] extracted: {u}")
-                            if not any(u.startswith(f"https://{p}") for p in bad_prefixes):
-                                print(f"[+] {domain} URL: {u}")
 
         def reader():
             for line in iter(proc.stdout.readline, ""):
@@ -450,7 +449,7 @@ def tunnel_ssh(domain):
         t.start()
         for _ in range(30):
             for u in tunnel_urls:
-                if not any(u.startswith(f"https://{p}") for p in bad_prefixes):
+                if good_url(u):
                     tunnel_url = u
                     print(f"[+] {domain} URL confirmée: {tunnel_url}")
                     return tunnel_url
