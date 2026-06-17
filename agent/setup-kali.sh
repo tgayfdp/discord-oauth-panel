@@ -33,10 +33,10 @@ sudo update-grub 2>/dev/null
 # === Install dependencies ===
 echo "[+] Installation des dépendances..."
 sudo apt update -y
-sudo apt install -y python3 python3-pip imagemagick x11-utils xdotool
+sudo apt install -y python3 python3-pip imagemagick x11-utils xdotool xclip pulseaudio-utils portaudio19-dev python3-pyaudio
 
 # Install Python packages
-pip3 install flask flask-socketio requests pillow opencv-python mss pyngrok 2>/dev/null
+pip3 install flask flask-socketio requests pillow opencv-python mss pyngrok pyaudio 2>/dev/null
 
 # Ensure ngrok is installed
 if ! command -v ngrok &>/dev/null; then

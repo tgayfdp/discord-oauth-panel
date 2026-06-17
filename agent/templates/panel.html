@@ -2,56 +2,83 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Kali Agent Panel</title>
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:hidden}
-.tabs{display:flex;background:#111;border-bottom:2px solid #0f03;padding:0;flex-wrap:wrap}
-.tab{padding:12px 20px;cursor:pointer;color:#080;border:none;background:none;font-family:monospace;font-size:13px}
+.tabs{display:flex;background:#111;border-bottom:2px solid #0f03;padding:0;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tab{padding:10px 14px;cursor:pointer;color:#080;border:none;background:none;font-family:monospace;font-size:12px;white-space:nowrap;flex-shrink:0}
 .tab:hover{color:#0f0;background:#0f01}
 .tab.active{color:#0f0;background:#0f02;border-bottom:2px solid #0f0}
-.panel{display:none;height:calc(100vh - 44px)}
+.panel{display:none;height:calc(100vh - 40px)}
 .panel.active{display:flex;flex-direction:column}
 #terminal-panel{background:#000}
-#terminal-output{flex:1;background:#000;color:#0f0;font-family:monospace;font-size:13px;padding:10px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;line-height:1.4}
+#terminal-output{flex:1;background:#000;color:#0f0;font-family:monospace;font-size:12px;padding:8px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word;line-height:1.4}
 #terminal-input-row{display:flex;background:#111;border-top:1px solid #0f03}
-#terminal-input{flex:1;background:#000;color:#0f0;border:none;outline:none;font-family:monospace;font-size:13px;padding:10px}
-#terminal-input-btn{background:#0f02;color:#0f0;border:1px solid#0f03;padding:10px 16px;cursor:pointer;font-family:monospace;font-size:13px}
-#terminal-input-btn:hover{background:#0f04}
+#terminal-input{flex:1;background:#000;color:#0f0;border:none;outline:none;font-family:monospace;font-size:12px;padding:8px}
+#terminal-input-btn{background:#0f02;color:#0f0;border:1px solid#0f03;padding:8px 12px;cursor:pointer;font-family:monospace;font-size:12px}
 .stream-container{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative;overflow:hidden}
 .stream-container img{max-width:100%;max-height:100%;object-fit:contain;cursor:default}
 .stream-container img.remote-active{cursor:crosshair}
-.stream-placeholder{color:#060;font-size:16px}
-.stream-controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:10}
-.stream-controls button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:8px 14px;cursor:pointer;font-family:monospace;font-size:12px}
+.stream-placeholder{color:#060;font-size:14px}
+.stream-controls{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);display:flex;gap:6px;z-index:10;flex-wrap:wrap;justify-content:center}
+.stream-controls button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:6px 10px;cursor:pointer;font-family:monospace;font-size:11px}
 .stream-controls button:hover{background:#0f04}
 .stream-controls button.active-remote{background:#0f0;color:#000}
-#remote-status{position:absolute;top:10px;left:10px;color:#0f0;font-size:12px;background:#000a;padding:4px 10px;border-radius:4px;z-index:10;display:none}
-#remote-cursor{position:absolute;pointer-events:none;z-index:5;display:none;width:4px;height:4px;background:#0f0;border:1px solid #000;border-radius:50%}
-.file-toolbar{display:flex;gap:8px;padding:8px 10px;background:#111;border-bottom:1px solid #0f03;align-items:center;flex-wrap:wrap}
-.file-toolbar input{flex:1;min-width:100px;background:#000;color:#0f0;border:1px solid#0f03;padding:6px 8px;font-family:monospace;font-size:12px}
-.file-toolbar button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:6px 12px;cursor:pointer;font-family:monospace;font-size:12px}
+.stream-controls button.active-audio{background:#0f0;color:#000}
+#remote-status{position:absolute;top:8px;left:8px;color:#0f0;font-size:11px;background:#000a;padding:3px 8px;border-radius:3px;z-index:10;display:none}
+#remote-cursor{position:absolute;pointer-events:none;z-index:5;display:none;width:3px;height:3px;background:#0f0;border:1px solid#000;border-radius:50%}
+.file-toolbar{display:flex;gap:6px;padding:6px 8px;background:#111;border-bottom:1px solid #0f03;align-items:center;flex-wrap:wrap}
+.file-toolbar span{font-size:11px;flex:1;min-width:50px;overflow:hidden;text-overflow:ellipsis}
+.file-toolbar button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:5px 10px;cursor:pointer;font-family:monospace;font-size:11px}
 .file-toolbar button:hover{background:#0f04}
-#file-list{flex:1;overflow-y:auto;padding:6px 10px;font-size:13px}
-.file-item{padding:4px 8px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+#file-list{flex:1;overflow-y:auto;padding:4px 8px;font-size:12px}
+.file-item{padding:3px 6px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
 .file-item:hover{background:#0f02}
 .file-item .name{color:#0f0}
-.file-item .name.dir{color:#0f0;font-weight:bold}
-.file-item .size{color:#060;font-size:11px;margin-left:10px}
-.file-item .actions button{background:none;color:#f00;border:none;cursor:pointer;font-family:monospace;font-size:12px;margin-left:6px}
+.file-item .name.dir{font-weight:bold}
+.file-item .size{color:#060;font-size:10px;margin-left:6px}
+.file-item .actions button{background:none;color:#f00;border:none;cursor:pointer;font-family:monospace;font-size:11px;margin-left:4px}
 .file-item .actions button.edit-btn{color:#0f0}
-.upload-zone{border:2px dashed #0f03;padding:12px;text-align:center;color:#060;margin:6px 10px;cursor:pointer;font-size:13px}
+.upload-zone{border:2px dashed #0f03;padding:10px;text-align:center;color:#060;margin:4px 8px;cursor:pointer;font-size:12px}
 .upload-zone:hover{border-color:#0f0;color:#0f0}
 #editor-overlay{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:#000c;z-index:100}
 #editor-overlay.active{display:flex;flex-direction:column}
-#editor-bar{display:flex;justify-content:space-between;background:#111;padding:8px 12px;border-bottom:1px solid #0f03}
-#editor-bar span{color:#0f0;font-size:13px}
-#editor-bar button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:6px 12px;cursor:pointer;font-family:monospace}
+#editor-bar{display:flex;justify-content:space-between;background:#111;padding:6px 10px;border-bottom:1px solid #0f03;align-items:center}
+#editor-bar span{color:#0f0;font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis}
+#editor-bar button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:5px 10px;cursor:pointer;font-family:monospace;font-size:11px}
 #editor-bar button:hover{background:#0f04}
-#editor-text{flex:1;background:#000;color:#0f0;border:none;outline:none;font-family:monospace;font-size:13px;padding:12px;resize:none;tab-size:4}
-#status{position:fixed;bottom:6px;right:10px;color:#060;font-size:11px;z-index:50}
+#editor-text{flex:1;background:#000;color:#0f0;border:none;outline:none;font-family:monospace;font-size:12px;padding:10px;resize:none;tab-size:4}
+#status{position:fixed;bottom:4px;right:8px;color:#060;font-size:10px;z-index:50}
+.sys-section{margin-bottom:14px}
+.sys-section .title{color:#0f0;font-weight:bold;margin-bottom:4px;font-size:13px}
+.sys-section .row{color:#aaa;font-size:12px;line-height:1.6}
+.sys-section .row b{color:#0f0}
+.sys-bar{background:#111;height:14px;border-radius:7px;margin:4px 0;overflow:hidden;border:1px solid #0f03}
+.sys-bar div{height:100%;transition:width 0.3s}
+.sys-card{background:#111;border:1px solid #0f03;border-radius:6px;padding:10px;margin-bottom:8px}
+.clipboard-row{display:flex;gap:6px;padding:6px 8px;background:#111;border-bottom:1px solid #0f03;flex-wrap:wrap}
+.clipboard-row button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:5px 10px;cursor:pointer;font-family:monospace;font-size:11px}
+.clipboard-row button:hover{background:#0f04}
+.clipboard-row textarea{flex:1;min-height:50px;background:#000;color:#0f0;border:1px solid#0f03;padding:6px;font-family:monospace;font-size:11px;resize:vertical}
+.power-row{display:flex;gap:6px;padding:8px;flex-wrap:wrap}
+.power-row button{flex:1;min-width:70px;padding:10px;border:1px solid#0f03;cursor:pointer;font-family:monospace;font-size:12px;font-weight:bold}
+.power-shutdown{background:#f002;color:#f00}
+.power-shutdown:hover{background:#f004}
+.power-reboot{background:#f06020;color:#f60}
+.power-reboot:hover{background:#f08040}
+.power-suspend{background:#ff02;color:#ff0}
+.power-suspend:hover{background:#ff04}
+.power-logout{background:#0f02;color:#0f0}
+.power-logout:hover{background:#0f04}
+@media(max-width:600px){
+  .tab{padding:8px 10px;font-size:11px}
+  .stream-controls button{font-size:10px;padding:4px 8px}
+  .sys-section .row{font-size:11px}
+  .power-row button{font-size:11px;padding:8px}
+}
 </style>
 </head>
 <body>
@@ -59,8 +86,11 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
   <div class="tab active" onclick="switchTab('terminal')">[Terminal]</div>
   <div class="tab" onclick="switchTab('screen')">[Ecran]</div>
   <div class="tab" onclick="switchTab('webcam')">[Webcam]</div>
+  <div class="tab" onclick="switchTab('audio')">[Audio]</div>
+  <div class="tab" onclick="switchTab('clipboard')">[Clipboard]</div>
   <div class="tab" onclick="switchTab('files')">[Fichiers]</div>
   <div class="tab" onclick="switchTab('system')">[Systeme]</div>
+  <div class="tab" onclick="switchTab('power')">[Power]</div>
 </div>
 
 <div id="terminal-panel" class="panel active">
@@ -73,7 +103,7 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
 
 <div id="screen-panel" class="panel">
   <div class="stream-container" id="screen-container">
-    <div class="stream-placeholder" id="screen-placeholder">[Cliquer pour démarrer le streaming ecran]</div>
+    <div class="stream-placeholder" id="screen-placeholder">[Stream ecran]</div>
     <img id="screen-image" style="display:none" />
     <div id="remote-cursor"></div>
     <div id="remote-status">Remote: OFF</div>
@@ -81,14 +111,14 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
       <button onclick="startScreen()">Stream</button>
       <button onclick="stopScreen()">Stop</button>
       <button onclick="captureScreen()">Capture</button>
-      <button id="remote-toggle" onclick="toggleRemote()">Remote: OFF</button>
+      <button id="remote-toggle" onclick="toggleRemote()">Remote</button>
     </div>
   </div>
 </div>
 
 <div id="webcam-panel" class="panel">
   <div class="stream-container">
-    <div class="stream-placeholder" id="webcam-placeholder">[Cliquer pour démarrer la webcam]</div>
+    <div class="stream-placeholder" id="webcam-placeholder">[Stream webcam]</div>
     <img id="webcam-image" style="display:none" />
     <div class="stream-controls">
       <button onclick="startWebcam()">Stream</button>
@@ -98,16 +128,68 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
   </div>
 </div>
 
+<div id="audio-panel" class="panel">
+  <div class="stream-container" style="flex-direction:column;gap:20px">
+    <div class="stream-placeholder" id="audio-placeholder">🎤 Microphone du Kali</div>
+    <div id="audio-visual" style="width:80%;max-width:400px;height:40px;background:#111;border-radius:8px;border:1px solid#0f03;overflow:hidden">
+      <div id="audio-level" style="width:0%;height:100%;background:#0f0;transition:width 0.05s"></div>
+    </div>
+    <div class="stream-controls" style="position:static;transform:none">
+      <button id="audio-toggle" onclick="toggleAudio()">🎤 Demarrer Audio</button>
+    </div>
+    <div id="audio-status" style="color:#060;font-size:12px">Inactif</div>
+  </div>
+</div>
+
+<div id="clipboard-panel" class="panel">
+  <div style="padding:8px;background:#111;border-bottom:1px solid#0f03">
+    <div style="color:#0f0;font-weight:bold;font-size:13px;margin-bottom:6px">📋 Presse-papier</div>
+    <textarea id="clipboard-text" rows="5" style="width:100%;background:#000;color:#0f0;border:1px solid#0f03;padding:8px;font-family:monospace;font-size:12px;resize:vertical"></textarea>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+      <button onclick="pullClipboard()" style="background:#0f02;color:#0f0;border:1px solid#0f03;padding:6px 12px;cursor:pointer;font-family:monospace;font-size:11px">📥 Pull du Kali</button>
+      <button onclick="pushClipboard()" style="background:#0f02;color:#0f0;border:1px solid#0f03;padding:6px 12px;cursor:pointer;font-family:monospace;font-size:11px">📤 Push vers Kali</button>
+    </div>
+    <div id="clipboard-msg" style="color:#060;font-size:11px;margin-top:4px"></div>
+  </div>
+  <div style="flex:1;padding:10px;color:#060;font-size:12px;text-align:center;display:flex;align-items:center;justify-content:center">
+    Synchronise le presse-papier entre ton navigateur et le Kali
+  </div>
+</div>
+
 <div id="files-panel" class="panel">
   <div class="file-toolbar">
-    <span id="current-path" style="color:#060;font-size:12px">/</span>
+    <span id="current-path">/</span>
     <button onclick="refreshFiles()">R</button>
     <button onclick="goUp()">..</button>
   </div>
   <div id="file-list"></div>
   <div class="upload-zone" onclick="document.getElementById('file-upload').click()">
-    [+] Uploader un fichier
+    [+] Uploader
     <input type="file" id="file-upload" style="display:none" onchange="uploadFile(this)" />
+  </div>
+</div>
+
+<div id="system-panel" class="panel">
+  <div style="flex:1;overflow-y:auto;padding:12px;font-size:12px" id="sys-container">
+    <div id="sys-info" style="color:#060;text-align:center;padding:30px">Chargement...</div>
+  </div>
+  <div style="padding:6px;text-align:center;background:#111;border-top:1px solid#0f03">
+    <button onclick="loadSysInfo()" style="background:#0f02;color:#0f0;border:1px solid#0f03;padding:5px 10px;cursor:pointer;font-family:monospace;font-size:11px">Rafraichir</button>
+  </div>
+</div>
+
+<div id="power-panel" class="panel">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;gap:16px">
+    <div style="color:#0f0;font-size:16px;font-weight:bold">⚡ Controle du Kali</div>
+    <div class="power-row" style="width:100%;max-width:400px">
+      <button class="power-shutdown" onclick="powerAction('shutdown')">⏻ SHUTDOWN</button>
+      <button class="power-reboot" onclick="powerAction('reboot')">🔄 REBOOT</button>
+    </div>
+    <div class="power-row" style="width:100%;max-width:400px">
+      <button class="power-suspend" onclick="powerAction('suspend')">💤 SUSPEND</button>
+      <button class="power-logout" onclick="powerAction('logout')">🚪 LOGOUT</button>
+    </div>
+    <div id="power-msg" style="color:#060;font-size:12px"></div>
   </div>
 </div>
 
@@ -115,20 +197,11 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
   <div id="editor-bar">
     <span id="editor-path">Fichier</span>
     <div>
-      <button onclick="saveFile()">[Sauvegarder]</button>
-      <button onclick="closeEditor()">[Fermer]</button>
+      <button onclick="saveFile()">Sauvegarder</button>
+      <button onclick="closeEditor()">Fermer</button>
     </div>
   </div>
   <textarea id="editor-text" spellcheck="false"></textarea>
-</div>
-
-<div id="system-panel" class="panel">
-  <div style="flex:1;overflow-y:auto;padding:16px;font-size:13px">
-    <div id="sys-info" style="color:#060;text-align:center;padding:40px">Chargement...</div>
-  </div>
-  <div style="padding:8px;border-top:1px solid #0f03;background:#111;text-align:center">
-    <button onclick="loadSysInfo()" style="background:#0f02;color:#0f0;border:1px solid#0f03;padding:6px 12px;cursor:pointer;font-family:monospace;font-size:12px">Rafraichir</button>
-  </div>
 </div>
 
 <div id="status"></div>
@@ -136,397 +209,220 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
 <script>
 const PASSWORD = '{{password}}';
 const socket = io({auth:{token:PASSWORD}});
-let screenRunning = false, webcamRunning = false, remoteActive = false;
-let currentPath = '/home';
-let editingPath = '';
-let screenW = 1920, screenH = 1080;
+let screenRunning=false, webcamRunning=false, remoteActive=false, audioActive=false;
+let audioCtx=null, currentPath='/home', editingPath='', screenW=1920, screenH=1080;
 
-function authHeaders() {
-  return {'Authorization': PASSWORD};
-}
+function authHeaders(){return{'Authorization':PASSWORD}}
 
-function switchTab(name) {
+function switchTab(name){
   document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-  const tab = document.querySelector(`.tab[onclick*="${name}"]`);
-  if(tab) tab.classList.add('active');
+  const tab=document.querySelector(`.tab[onclick*="${name}"]`);
+  if(tab)tab.classList.add('active');
   document.getElementById(name+'-panel').classList.add('active');
-  if(name==='files') refreshFiles();
-  if(name==='system') loadSysInfo();
+  if(name==='files')refreshFiles();
+  if(name==='system')loadSysInfo();
 }
 
 // ====== TERMINAL ======
-const output = document.getElementById('terminal-output');
-const termInput = document.getElementById('terminal-input');
-
-function appendOutput(text) {
-  output.textContent += text;
-  output.scrollTop = output.scrollHeight;
-}
-
-socket.on('shell:data', (d) => {
-  appendOutput(d.data);
-});
-
-termInput.addEventListener('keydown', (e) => {
-  if(e.key === 'Enter' && termInput.value.trim()) {
-    appendOutput('$ ' + termInput.value + '\n');
-    socket.emit('shell:input', {data: termInput.value + '\n'});
-    termInput.value = '';
+const output=document.getElementById('terminal-output');
+const termInput=document.getElementById('terminal-input');
+function appendOutput(t){output.textContent+=t;output.scrollTop=output.scrollHeight}
+socket.on('shell:data',d=>appendOutput(d.data));
+termInput.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&termInput.value.trim()){
+    appendOutput('$ '+termInput.value+'\n');
+    socket.emit('shell:input',{data:termInput.value+'\n'});
+    termInput.value='';
   }
 });
-
-document.getElementById('terminal-input-btn').onclick = () => {
-  const cmd = document.getElementById('terminal-input').value;
-  if(!cmd.trim()) return;
-  fetch('/api/exec', {
-    method:'POST',
-    headers:{'Content-Type':'application/json', ...authHeaders()},
-    body:JSON.stringify({cmd})
-  }).then(r=>r.json()).then(d=>{
-    appendOutput('$ ' + cmd + '\n');
-    if(d.stdout) appendOutput(d.stdout);
-    if(d.stderr) appendOutput(d.stderr);
-    if(d.code !== undefined) appendOutput('\n[code: ' + d.code + ']\n');
-  });
-  document.getElementById('terminal-input').value = '';
+document.getElementById('terminal-input-btn').onclick=()=>{
+  const cmd=document.getElementById('terminal-input').value;
+  if(!cmd.trim())return;
+  fetch('/api/exec',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({cmd})})
+    .then(r=>r.json()).then(d=>{
+      appendOutput('$ '+cmd+'\n');
+      if(d.stdout)appendOutput(d.stdout);
+      if(d.stderr)appendOutput(d.stderr);
+      if(d.code!==undefined)appendOutput('\n[code: '+d.code+']\n');
+    });
+  document.getElementById('terminal-input').value='';
 };
 
-// ====== SCREEN STREAM ======
-const screenImg = document.getElementById('screen-image');
-const screenContainer = document.getElementById('screen-container');
-const screenPlaceholder = document.getElementById('screen-placeholder');
-const remoteCursor = document.getElementById('remote-cursor');
-const remoteStatus = document.getElementById('remote-status');
-const remoteToggle = document.getElementById('remote-toggle');
+// ====== SCREEN ======
+const screenImg=document.getElementById('screen-image');
+const screenPlaceholder=document.getElementById('screen-placeholder');
+const remoteCursor=document.getElementById('remote-cursor');
+const remoteStatus=document.getElementById('remote-status');
+const remoteToggle=document.getElementById('remote-toggle');
+socket.on('screen:frame',d=>{screenImg.src='data:image/jpeg;base64,'+d.image;screenImg.style.display='';screenPlaceholder.style.display='none'});
+function startScreen(){if(screenRunning)return;screenRunning=true;socket.emit('start:screen');screenPlaceholder.textContent='[Streaming...]'}
+function stopScreen(){screenRunning=false;screenImg.style.display='none';screenPlaceholder.style.display='';screenPlaceholder.textContent='[Arrete]'}
+function captureScreen(){fetch('/api/screenshot',{headers:authHeaders()}).then(r=>r.json()).then(d=>{if(d.image){screenImg.src='data:image/jpeg;base64,'+d.image;screenImg.style.display='';screenPlaceholder.style.display='none'}})}
 
-socket.on('screen:frame', (d) => {
-  screenImg.src = 'data:image/jpeg;base64,' + d.image;
-  screenImg.style.display = '';
-  screenPlaceholder.style.display = 'none';
-});
-
-function startScreen() {
-  if(screenRunning) return;
-  screenRunning = true;
-  socket.emit('start:screen');
-  screenPlaceholder.textContent = '[Streaming ecran...]';
+// ====== REMOTE ======
+function toggleRemote(){
+  remoteActive=!remoteActive;
+  remoteToggle.textContent=remoteActive?'Remote:ON':'Remote';
+  remoteToggle.classList.toggle('active-remote',remoteActive);
+  remoteStatus.style.display=remoteActive?'block':'none';
+  remoteStatus.textContent=remoteActive?'Remote: ON':'Remote: OFF';
+  screenImg.classList.toggle('remote-active',remoteActive);
+  if(!remoteActive)remoteCursor.style.display='none';
 }
-
-function stopScreen() {
-  screenRunning = false;
-  screenImg.style.display = 'none';
-  screenPlaceholder.style.display = '';
-  screenPlaceholder.textContent = '[Stream arrete]';
+function getRemoteCoords(cx,cy){
+  const r=screenImg.getBoundingClientRect();
+  return{x:Math.round((cx-r.left)*screenW/r.width),y:Math.round((cy-r.top)*screenH/r.height),ix:cx-r.left,iy:cy-r.top};
 }
-
-function captureScreen() {
-  fetch('/api/screenshot', {headers:authHeaders()})
-    .then(r=>r.json()).then(d=>{
-      if(d.image) {
-        screenImg.src = 'data:image/jpeg;base64,' + d.image;
-        screenImg.style.display = '';
-        screenPlaceholder.style.display = 'none';
-      }
-    });
-}
-
-// ====== REMOTE CONTROL (TeamViewer-like) ======
-function toggleRemote() {
-  remoteActive = !remoteActive;
-  if(remoteActive) {
-    remoteToggle.textContent = 'Remote: ON';
-    remoteToggle.classList.add('active-remote');
-    remoteStatus.textContent = 'Remote: ON';
-    remoteStatus.style.display = 'block';
-    screenImg.classList.add('remote-active');
-  } else {
-    remoteToggle.textContent = 'Remote: OFF';
-    remoteToggle.classList.remove('active-remote');
-    remoteStatus.style.display = 'none';
-    screenImg.classList.remove('remote-active');
-    remoteCursor.style.display = 'none';
-  }
-}
-
-function getRemoteCoords(clientX, clientY) {
-  const rect = screenImg.getBoundingClientRect();
-  const imgX = clientX - rect.left;
-  const imgY = clientY - rect.top;
-  const scaleX = screenW / rect.width;
-  const scaleY = screenH / rect.height;
-  return {
-    x: Math.round(imgX * scaleX),
-    y: Math.round(imgY * scaleY),
-    imgX, imgY
-  };
-}
-
-// Mouse move on screen image
-screenImg.addEventListener('mousemove', (e) => {
-  if(!remoteActive || !screenRunning) return;
-  const coords = getRemoteCoords(e.clientX, e.clientY);
-  remoteCursor.style.display = 'block';
-  remoteCursor.style.left = (coords.imgX - 2) + 'px';
-  remoteCursor.style.top = (coords.imgY - 2) + 'px';
-  socket.emit('remote:mousemove', {x: coords.x, y: coords.y});
-});
-
-// Click events
-screenImg.addEventListener('mousedown', (e) => {
-  if(!remoteActive || !screenRunning) return;
-  e.preventDefault();
-  const btn = ['left', 'middle', 'right'][e.button] || 'left';
-  const coords = getRemoteCoords(e.clientX, e.clientY);
-  socket.emit('remote:mousemove', {x: coords.x, y: coords.y});
-  socket.emit('remote:mousedown', {button: btn});
-});
-
-screenImg.addEventListener('mouseup', (e) => {
-  if(!remoteActive || !screenRunning) return;
-  e.preventDefault();
-  const btn = ['left', 'middle', 'right'][e.button] || 'left';
-  socket.emit('remote:mouseup', {button: btn});
-});
-
-screenImg.addEventListener('wheel', (e) => {
-  if(!remoteActive || !screenRunning) return;
-  e.preventDefault();
-  const key = e.deltaY < 0 ? 'Page_Up' : 'Page_Down';
-  socket.emit('remote:key', {key});
-});
-
-// Mouse leave
-screenImg.addEventListener('mouseleave', () => {
-  remoteCursor.style.display = 'none';
-});
-
-// Keyboard for remote typing
-document.addEventListener('keydown', (e) => {
-  if(!remoteActive || !screenRunning) return;
-  if(e.ctrlKey || e.metaKey || e.altKey) return;
-
-  const keyMap = {
-    'Enter': 'Return', 'Backspace': 'BackSpace', 'Tab': 'Tab',
-    'Escape': 'Escape', 'Delete': 'Delete', 'Home': 'Home',
-    'End': 'End', 'PageUp': 'Page_Up', 'PageDown': 'Page_Down',
-    'ArrowUp': 'Up', 'ArrowDown': 'Down', 'ArrowLeft': 'Left', 'ArrowRight': 'Right',
-    'F1':'F1','F2':'F2','F3':'F3','F4':'F4','F5':'F5','F6':'F6',
-    'F7':'F7','F8':'F8','F9':'F9','F10':'F10','F11':'F11','F12':'F12'
-  };
-
-  const key = keyMap[e.key];
-  if(key) {
-    e.preventDefault();
-    socket.emit('remote:key', {key});
-  } else if(e.key.length === 1) {
-    socket.emit('remote:type', {text: e.key});
-  }
+screenImg.addEventListener('mousemove',e=>{if(!remoteActive||!screenRunning)return;const c=getRemoteCoords(e.clientX,e.clientY);remoteCursor.style.display='block';remoteCursor.style.left=(c.ix-2)+'px';remoteCursor.style.top=(c.iy-2)+'px';socket.emit('remote:mousemove',{x:c.x,y:c.y})});
+screenImg.addEventListener('mousedown',e=>{if(!remoteActive||!screenRunning)return;e.preventDefault();const b=['left','middle','right'][e.button]||'left';const c=getRemoteCoords(e.clientX,e.clientY);socket.emit('remote:mousemove',{x:c.x,y:c.y});socket.emit('remote:mousedown',{button:b})});
+screenImg.addEventListener('mouseup',e=>{if(!remoteActive||!screenRunning)return;e.preventDefault();socket.emit('remote:mouseup',{button:['left','middle','right'][e.button]||'left'})});
+screenImg.addEventListener('wheel',e=>{if(!remoteActive||!screenRunning)return;e.preventDefault();socket.emit('remote:key',{key:e.deltaY<0?'Page_Up':'Page_Down'})});
+screenImg.addEventListener('mouseleave',()=>{if(remoteActive)remoteCursor.style.display='none'});
+document.addEventListener('keydown',e=>{
+  if(!remoteActive||!screenRunning||e.ctrlKey||e.metaKey||e.altKey)return;
+  const km={'Enter':'Return','Backspace':'BackSpace','Tab':'Tab','Escape':'Escape','Delete':'Delete','Home':'Home','End':'End','PageUp':'Page_Up','PageDown':'Page_Down','ArrowUp':'Up','ArrowDown':'Down','ArrowLeft':'Left','ArrowRight':'Right','F1':'F1','F2':'F2','F3':'F3','F4':'F4','F5':'F5','F6':'F6','F7':'F7','F8':'F8','F9':'F9','F10':'F10','F11':'F11','F12':'F12'};
+  const k=km[e.key];
+  if(k){e.preventDefault();socket.emit('remote:key',{key:k})}else if(e.key.length===1){socket.emit('remote:type',{text:e.key})}
 });
 
 // ====== WEBCAM ======
-const webcamImg = document.getElementById('webcam-image');
-const webcamPlaceholder = document.getElementById('webcam-placeholder');
+const webcamImg=document.getElementById('webcam-image');
+const webcamPlaceholder=document.getElementById('webcam-placeholder');
+socket.on('webcam:frame',d=>{webcamImg.src='data:image/jpeg;base64,'+d.image;webcamImg.style.display='';webcamPlaceholder.style.display='none'});
+function startWebcam(){if(webcamRunning)return;webcamRunning=true;socket.emit('start:webcam');webcamPlaceholder.textContent='[Streaming...]'}
+function stopWebcam(){webcamRunning=false;webcamImg.style.display='none';webcamPlaceholder.style.display='';webcamPlaceholder.textContent='[Arrete]'}
+function captureWebcam(){fetch('/api/webcam',{headers:authHeaders()}).then(r=>r.json()).then(d=>{if(d.image){webcamImg.src='data:image/jpeg;base64,'+d.image;webcamImg.style.display='';webcamPlaceholder.style.display='none'}})}
 
-socket.on('webcam:frame', (d) => {
-  webcamImg.src = 'data:image/jpeg;base64,' + d.image;
-  webcamImg.style.display = '';
-  webcamPlaceholder.style.display = 'none';
+// ====== AUDIO ======
+const audioLevel=document.getElementById('audio-level');
+const audioToggle=document.getElementById('audio-toggle');
+const audioStatus=document.getElementById('audio-status');
+
+socket.on('audio:data',d=>{
+  const data=Uint8Array.from(atob(d.data),c=>c.charCodeAt(0));
+  const max=Math.max(...data.map(v=>Math.abs(v-128)))||1;
+  audioLevel.style.width=Math.min(100,(max/128*100))+'%';
+  if(!audioCtx){
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    const src=audioCtx.createBufferSource();
+    audioCtx.decodeAudioData(data.buffer, buf=>{const s=audioCtx.createBufferSource();s.buffer=buf;s.connect(audioCtx.destination);s.start()});
+  }
 });
 
-function startWebcam() {
-  if(webcamRunning) return;
-  webcamRunning = true;
-  socket.emit('start:webcam');
-  webcamPlaceholder.textContent = '[Streaming webcam...]';
+function toggleAudio(){
+  audioActive=!audioActive;
+  if(audioActive){
+    socket.emit('audio:start');
+    audioToggle.textContent='🔴 Arreter Audio';
+    audioToggle.classList.add('active-audio');
+    audioStatus.textContent='Streaming audio...';
+    audioStatus.style.color='#0f0';
+  }else{
+    socket.emit('audio:stop');
+    audioToggle.textContent='🎤 Demarrer Audio';
+    audioToggle.classList.remove('active-audio');
+    audioLevel.style.width='0%';
+    audioStatus.textContent='Inactif';
+    audioStatus.style.color='#060';
+    if(audioCtx){audioCtx.close();audioCtx=null}
+  }
 }
 
-function stopWebcam() {
-  webcamRunning = false;
-  webcamImg.style.display = 'none';
-  webcamPlaceholder.style.display = '';
-  webcamPlaceholder.textContent = '[Stream arrete]';
+// ====== CLIPBOARD ======
+function pullClipboard(){
+  const msg=document.getElementById('clipboard-msg');
+  fetch('/api/clipboard',{headers:authHeaders()}).then(r=>r.json()).then(d=>{
+    document.getElementById('clipboard-text').value=d.content||'';
+    msg.textContent='✓ Contenu recupere du Kali';
+    msg.style.color='#0f0';
+  }).catch(()=>{msg.textContent='✗ Erreur';msg.style.color='#f00'});
 }
-
-function captureWebcam() {
-  fetch('/api/webcam', {headers:authHeaders()})
+function pushClipboard(){
+  const msg=document.getElementById('clipboard-msg');
+  const text=document.getElementById('clipboard-text').value;
+  fetch('/api/clipboard',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({content:text})})
     .then(r=>r.json()).then(d=>{
-      if(d.image) {
-        webcamImg.src = 'data:image/jpeg;base64,' + d.image;
-        webcamImg.style.display = '';
-        webcamPlaceholder.style.display = 'none';
-      }
+      msg.textContent=d.ok?'✓ Pousse vers le Kali':'✗ Erreur';
+      msg.style.color=d.ok?'#0f0':'#f00';
     });
 }
 
 // ====== FILES ======
-function refreshFiles(dir) {
-  const path = dir || currentPath;
-  fetch('/api/ls?path=' + encodeURIComponent(path), {headers:authHeaders()})
-    .then(r=>r.json()).then(d=>{
-      if(d.error) return;
-      currentPath = d.path;
-      document.getElementById('current-path').textContent = d.path;
-      const list = document.getElementById('file-list');
-      list.innerHTML = '';
-      d.items.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'file-item';
-        const name = document.createElement('span');
-        name.className = 'name' + (item.type === 'dir' ? ' dir' : '');
-        name.textContent = (item.type === 'dir' ? '📁 ' : '📄 ') + item.name;
-        if(item.type === 'dir') {
-          name.onclick = () => refreshFiles(d.path + '/' + item.name);
-        }
-        div.appendChild(name);
-        const actions = document.createElement('div');
-        actions.className = 'actions';
-        if(item.type === 'file') {
-          const size = document.createElement('span');
-          size.className = 'size';
-          size.textContent = formatBytes(item.size);
-          actions.appendChild(size);
-          const edit = document.createElement('button');
-          edit.className = 'edit-btn';
-          edit.textContent = '[Edit]';
-          edit.onclick = (e) => { e.stopPropagation(); editFile(d.path + '/' + item.name); };
-          actions.appendChild(edit);
-          const dl = document.createElement('button');
-          dl.className = 'edit-btn';
-          dl.textContent = '[DL]';
-          dl.onclick = (e) => {
-            e.stopPropagation();
-            window.open('/api/download?path=' + encodeURIComponent(d.path + '/' + item.name) + '&auth=' + PASSWORD);
-          };
-          actions.appendChild(dl);
-        }
-        const del = document.createElement('button');
-        del.textContent = '[X]';
-        del.onclick = (e) => {
-          e.stopPropagation();
-          if(confirm('Supprimer ' + item.name + ' ?'))
-            fetch('/api/delete', {method:'POST',headers:{'Content-Type':'application/json', ...authHeaders()},body:JSON.stringify({path: d.path + '/' + item.name})})
-              .then(() => refreshFiles(d.path));
-        };
-        actions.appendChild(del);
-        div.appendChild(actions);
-        list.appendChild(div);
-      });
+function refreshFiles(dir){
+  const path=dir||currentPath;
+  fetch('/api/ls?path='+encodeURIComponent(path),{headers:authHeaders()}).then(r=>r.json()).then(d=>{
+    if(d.error)return;currentPath=d.path;
+    document.getElementById('current-path').textContent=d.path;
+    const list=document.getElementById('file-list');list.innerHTML='';
+    d.items.forEach(item=>{
+      const div=document.createElement('div');div.className='file-item';
+      const name=document.createElement('span');name.className='name'+(item.type==='dir'?' dir':'');
+      name.textContent=(item.type==='dir'?'📁 ':'📄 ')+item.name;
+      if(item.type==='dir')name.onclick=()=>refreshFiles(d.path+'/'+item.name);
+      div.appendChild(name);
+      const actions=document.createElement('div');actions.className='actions';
+      if(item.type==='file'){
+        const sz=document.createElement('span');sz.className='size';sz.textContent=formatBytes(item.size);actions.appendChild(sz);
+        const ed=document.createElement('button');ed.className='edit-btn';ed.textContent='[Edit]';ed.onclick=e=>{e.stopPropagation();editFile(d.path+'/'+item.name)};actions.appendChild(ed);
+        const dl=document.createElement('button');dl.className='edit-btn';dl.textContent='[DL]';dl.onclick=e=>{e.stopPropagation();window.open('/api/download?path='+encodeURIComponent(d.path+'/'+item.name)+'&auth='+PASSWORD)};actions.appendChild(dl);
+      }
+      const del=document.createElement('button');del.textContent='[X]';del.onclick=e=>{e.stopPropagation();if(confirm('Supprimer?'))fetch('/api/delete',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({path:d.path+'/'+item.name})}).then(()=>refreshFiles(d.path))};
+      actions.appendChild(del);div.appendChild(actions);list.appendChild(div);
     });
+  });
 }
-
-function goUp() {
-  const parent = currentPath.replace(/\/+$/, '').split('/').slice(0,-1).join('/') || '/';
-  refreshFiles(parent);
-}
-
-function uploadFile(input) {
-  const file = input.files[0];
-  if(!file) return;
-  const formData = new FormData();
-  formData.append('file', file);
-  fetch('/api/upload?path=' + encodeURIComponent(currentPath) + '&auth=' + PASSWORD, {method:'POST',body:formData})
-    .then(r=>r.json()).then(() => { refreshFiles(currentPath); input.value = ''; });
-}
+function goUp(){refreshFiles(currentPath.replace(/\/+$/,'').split('/').slice(0,-1).join('/')||'/')}
+function uploadFile(input){const f=input.files[0];if(!f)return;const fd=new FormData();fd.append('file',f);fetch('/api/upload?path='+encodeURIComponent(currentPath)+'&auth='+PASSWORD,{method:'POST',body:fd}).then(()=>{refreshFiles(currentPath);input.value=''})}
 
 // ====== EDITOR ======
-function editFile(path) {
-  editingPath = path;
-  document.getElementById('editor-path').textContent = path;
-  document.getElementById('editor-text').value = 'Chargement...';
-  document.getElementById('editor-overlay').classList.add('active');
-  fetch('/api/read', {method:'POST',headers:{'Content-Type':'application/json', ...authHeaders()},body:JSON.stringify({path})})
+function editFile(path){editingPath=path;document.getElementById('editor-path').textContent=path;document.getElementById('editor-text').value='Chargement...';document.getElementById('editor-overlay').classList.add('active');fetch('/api/read',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({path})}).then(r=>r.json()).then(d=>{document.getElementById('editor-text').value=d.content!==undefined?d.content:'Erreur: '+(d.error||'Lecture impossible')})}
+function saveFile(){const c=document.getElementById('editor-text').value;fetch('/api/write',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({path:editingPath,content:c})}).then(r=>r.json()).then(d=>{const s=document.getElementById('editor-bar').querySelector('span');if(d.ok){s.textContent='✓ Sauvegarde OK - '+editingPath;setTimeout(()=>{s.textContent=editingPath},2000)}})}
+function closeEditor(){document.getElementById('editor-overlay').classList.remove('active');editingPath=''}
+function formatBytes(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB'}
+
+// ====== SYSTEM ======
+function loadSysInfo(){
+  const el=document.getElementById('sys-info');el.innerHTML='Chargement...';el.style.color='#060';
+  fetch('/api/sysinfo',{headers:authHeaders()}).then(r=>r.json()).then(d=>{
+    if(d.error){el.innerHTML='Erreur: '+d.error;el.style.color='#f00';return}
+    let h='';
+    const mp=d.memory.total_mb>0?(d.memory.used_mb/d.memory.total_mb*100).toFixed(1):0;
+    h+='<div class="sys-section"><div class="title">💾 RAM</div><div class="row">Total: <b>'+d.memory.total_mb+' MB</b></div><div class="row">Utilise: <b>'+(mp>80?'<span style="color:#f00">':'')+d.memory.used_mb+' MB'+(mp>80?'</span>':'')+'</b> | Libre: <b>'+d.memory.avail_mb+' MB</b></div><div class="sys-bar"><div style="width:'+mp+'%;background:'+(mp>80?'#f00':'#0f0')+'"></div></div>';
+    if(d.memory.swap_total_mb>0)h+='<div class="row">Swap: <b>'+d.memory.swap_free_mb+'/'+d.memory.swap_total_mb+' MB</b></div>';
+    h+='</div>';
+    h+='<div class="sys-section"><div class="title">💽 Disque</div><div class="row">Total: <b>'+d.disk.total_gb+' GB</b></div><div class="row">Utilise: <b>'+(d.disk.percent>80?'<span style="color:#f00">':'')+d.disk.used_gb+' GB'+(d.disk.percent>80?'</span>':'')+'</b> | Libre: <b>'+d.disk.free_gb+' GB</b></div><div class="sys-bar"><div style="width:'+d.disk.percent+'%;background:'+(d.disk.percent>80?'#f00':'#0f0')+'"></div></div></div>';
+    h+='<div class="sys-section"><div class="title">⚡ CPU</div><div class="row" style="font-size:11px">'+d.cpu.model+'</div><div class="row">Coeurs: <b>'+d.cpu.cores+'</b> | Charge: 1m:<b>'+d.cpu.load_1m+'</b> 5m:<b>'+d.cpu.load_5m+'</b> 15m:<b>'+d.cpu.load_15m+'</b></div></div>';
+    // Temperatures
+    if(d.temperatures&&d.temperatures.cpu&&d.temperatures.cpu.length>0){
+      h+='<div class="sys-section"><div class="title">🌡 Temperatures</div>';
+      d.temperatures.cpu.forEach(t=>{h+='<div class="row">'+t.type+': <b>'+(t.temp_c>70?'<span style="color:#f00">':'')+t.temp_c+'°C'+(t.temp_c>70?'</span>':'')+'</b></div>'});
+      if(d.temperatures.gpu_c)h+='<div class="row">GPU: <b>'+(d.temperatures.gpu_c>70?'<span style="color:#f00">':'')+d.temperatures.gpu_c+'°C'+(d.temperatures.gpu_c>70?'</span>':'')+'</b></div>';
+      h+='</div>';
+    }
+    h+='<div class="row" style="margin-top:8px">Processus: <b>'+d.processes+'</b></div>';
+    el.innerHTML=h;el.style.color='#0f0';el.style.textAlign='left';
+  }).catch(()=>{el.innerHTML='Erreur connexion';el.style.color='#f00'});
+}
+
+// ====== POWER ======
+function powerAction(action){
+  const msg=document.getElementById('power-msg');
+  if(!confirm('Confirmer: '+action.toUpperCase()+'?'))return;
+  msg.textContent='Execution de '+action+'...';msg.style.color='#ff0';
+  fetch('/api/power',{method:'POST',headers:{'Content-Type':'application/json',...authHeaders()},body:JSON.stringify({action})})
     .then(r=>r.json()).then(d=>{
-      if(d.content !== undefined) {
-        document.getElementById('editor-text').value = d.content;
-      } else {
-        document.getElementById('editor-text').value = 'Erreur: ' + (d.error || 'Impossible de lire');
-      }
-    });
-}
-
-function saveFile() {
-  const content = document.getElementById('editor-text').value;
-  fetch('/api/write', {method:'POST',headers:{'Content-Type':'application/json', ...authHeaders()},body:JSON.stringify({path:editingPath, content})})
-    .then(r=>r.json()).then(d=>{
-      if(d.ok) {
-        document.getElementById('editor-bar').querySelector('span').textContent = '✓ Sauvegardé - ' + editingPath;
-        setTimeout(() => {
-          document.getElementById('editor-bar').querySelector('span').textContent = editingPath;
-        }, 2000);
-      }
-    });
-}
-
-function closeEditor() {
-  document.getElementById('editor-overlay').classList.remove('active');
-  editingPath = '';
-}
-
-function formatBytes(bytes) {
-  if(bytes < 1024) return bytes + ' B';
-  if(bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
-  return (bytes/1048576).toFixed(1) + ' MB';
-}
-
-// ====== SYSTEM INFO ======
-function loadSysInfo() {
-  const el = document.getElementById('sys-info');
-  el.innerHTML = 'Chargement...';
-  el.style.color = '#060';
-  fetch('/api/sysinfo', {headers:authHeaders()})
-    .then(r=>r.json()).then(d=>{
-      if(d.error) {
-        el.innerHTML = 'Erreur: ' + d.error;
-        el.style.color = '#f00';
-        return;
-      }
-      let html = '';
-      // RAM
-      const memPct = d.memory.total_mb > 0 ? (d.memory.used_mb / d.memory.total_mb * 100).toFixed(1) : 0;
-      html += '<div style="margin-bottom:16px">';
-      html += '<div style="color:#0f0;font-weight:bold;margin-bottom:6px">💾 MEMOIRE (RAM)</div>';
-      html += '<div style="color:#aaa">Total: <b style="color:#0f0">' + d.memory.total_mb + ' MB</b></div>';
-      html += '<div style="color:#aaa">Utilise: <b style="color:' + (memPct > 80 ? '#f00' : '#0f0') + '">' + d.memory.used_mb + ' MB</b></div>';
-      html += '<div style="color:#aaa">Disponible: <b style="color:#0f0">' + d.memory.avail_mb + ' MB</b></div>';
-      html += '<div style="background:#111;height:16px;border-radius:8px;margin-top:4px;overflow:hidden;border:1px solid #0f03"><div style="width:' + memPct + '%;height:100%;background:' + (memPct > 80 ? '#f00' : '#0f0') + ';transition:width 0.3s"></div></div>';
-      if(d.memory.swap_total_mb > 0) {
-        html += '<div style="color:#aaa;margin-top:4px">Swap: ' + d.memory.swap_free_mb + '/' + d.memory.swap_total_mb + ' MB</div>';
-      }
-      html += '</div>';
-      // DISK
-      html += '<div style="margin-bottom:16px">';
-      html += '<div style="color:#0f0;font-weight:bold;margin-bottom:6px">💽 DISQUE</div>';
-      html += '<div style="color:#aaa">Total: <b style="color:#0f0">' + d.disk.total_gb + ' GB</b></div>';
-      html += '<div style="color:#aaa">Utilise: <b style="color:' + (d.disk.percent > 80 ? '#f00' : '#0f0') + '">' + d.disk.used_gb + ' GB</b></div>';
-      html += '<div style="color:#aaa">Libre: <b style="color:#0f0">' + d.disk.free_gb + ' GB</b></div>';
-      html += '<div style="background:#111;height:16px;border-radius:8px;margin-top:4px;overflow:hidden;border:1px solid #0f03"><div style="width:' + d.disk.percent + '%;height:100%;background:' + (d.disk.percent > 80 ? '#f00' : '#0f0') + ';transition:width 0.3s"></div></div>';
-      html += '</div>';
-      // CPU
-      html += '<div style="margin-bottom:16px">';
-      html += '<div style="color:#0f0;font-weight:bold;margin-bottom:6px">⚡ CPU</div>';
-      html += '<div style="color:#aaa">Modele: <b style="color:#0f0;font-size:11px">' + d.cpu.model + '</b></div>';
-      html += '<div style="color:#aaa">Coeurs: <b style="color:#0f0">' + d.cpu.cores + '</b></div>';
-      html += '<div style="color:#aaa">Charge: 1m: <b style="color:#0f0">' + d.cpu.load_1m + '</b> | 5m: <b style="color:#0f0">' + d.cpu.load_5m + '</b> | 15m: <b style="color:#0f0">' + d.cpu.load_15m + '</b></div>';
-      html += '</div>';
-      // Processus
-      html += '<div style="color:#aaa">Processus actifs: <b style="color:#0f0">' + d.processes + '</b></div>';
-      el.innerHTML = html;
-      el.style.color = '#0f0';
-      el.style.textAlign = 'left';
-    }).catch(() => {
-      el.innerHTML = 'Erreur de connexion';
-      el.style.color = '#f00';
+      msg.textContent=d.ok?'✅ Commande envoyee - '+d.action:'✗ Erreur';
+      msg.style.color=d.ok?'#0f0':'#f00';
     });
 }
 
 // ====== STATUS ======
-fetch('/api/info', {headers:authHeaders()}).then(r=>r.json()).then(d=>{
-  document.getElementById('status').textContent = d.hostname + ' | ' + d.user + ' | ' + (d.ip||'');
-  if(d.screen_w) { screenW = d.screen_w; screenH = d.screen_h; }
+fetch('/api/info',{headers:authHeaders()}).then(r=>r.json()).then(d=>{
+  document.getElementById('status').textContent=d.hostname+' | '+d.user+' | '+(d.ip||'');
+  if(d.screen_w){screenW=d.screen_w;screenH=d.screen_h}
 }).catch(()=>{});
-
-setTimeout(() => refreshFiles(), 500);
+setTimeout(()=>refreshFiles(),500);
 </script>
 </body>
 </html>
