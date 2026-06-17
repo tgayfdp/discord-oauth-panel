@@ -417,24 +417,44 @@ def tunnel_ssh(domain):
            "-R", "80:localhost:5000", domain]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+        bad_prefixes = ("admin.", "console.", "www.", "app.")
+        def extract_urls(line):
+            found = []
+            for m in re.finditer(rf'(https?://)?[a-z0-9-]+\.{domain.replace(".", "\\.")}', line):
+                u = m.group()
+                if not u.startswith("http"): u = "https://" + u
+                if u not in tunnel_urls:
+                    tunnel_urls.append(u)
+                    found.append(u)
+                    if not any(u.startswith(f"https://{p}") for p in bad_prefixes):
+                        print(f"[+] {domain} URL: {u}")
+            if not found and domain in line:
+                for w in line.split():
+                    if domain in w:
+                        u = w.strip('.,;:!?\\"\'()[]{}<>')
+                        if not u.startswith("http"): u = "https://" + u
+                        if u not in tunnel_urls:
+                            tunnel_urls.append(u)
+                            print(f"[{domain}] extracted: {u}")
+                            if not any(u.startswith(f"https://{p}") for p in bad_prefixes):
+                                print(f"[+] {domain} URL: {u}")
+
         def reader():
             for line in iter(proc.stdout.readline, ""):
                 line = line.strip()
                 if line: print(f"[{domain}]", line)
-                for m in re.finditer(rf'(https?://)?[a-z0-9-]+\.{domain.replace(".", "\\.")}', line):
-                    u = m.group()
-                    if not u.startswith("http"): u = "https://" + u
-                    if u not in tunnel_urls: tunnel_urls.append(u)
+                extract_urls(line)
+
         t = threading.Thread(target=reader, daemon=True)
         t.start()
-        for _ in range(25):
-            if any(u for u in tunnel_urls if not any(u.startswith(f"https://{x}.") for x in ("admin", "console", "www", "app"))): break
+        for _ in range(30):
+            for u in tunnel_urls:
+                if not any(u.startswith(f"https://{p}") for p in bad_prefixes):
+                    tunnel_url = u
+                    print(f"[+] {domain} URL confirmée: {tunnel_url}")
+                    return tunnel_url
             time.sleep(1)
-        for u in tunnel_urls:
-            if not any(u.startswith(f"https://{x}.") for x in ("admin", "console", "www", "app")):
-                tunnel_url = u
-                print(f"[+] {domain} URL: {tunnel_url}")
-                return tunnel_url
         return None
     except Exception as e:
         print(f"[-] {domain} error: {e}")
