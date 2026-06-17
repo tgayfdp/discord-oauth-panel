@@ -6,3 +6,6 @@ proxies.txt
 users.db-shm
 users.db-wal
 users.db
+
+__pycache__/
+*.pyc
