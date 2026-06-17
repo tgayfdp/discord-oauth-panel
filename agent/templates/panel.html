@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kali Agent Panel</title>
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:hidden}
+.tabs{display:flex;background:#111;border-bottom:2px solid #0f03;padding:0}
+.tab{padding:12px 24px;cursor:pointer;color:#080;border:none;background:none;font-family:monospace;font-size:14px}
+.tab:hover{color:#0f0;background:#0f01}
+.tab.active{color:#0f0;background:#0f02;border-bottom:2px solid #0f0}
+.panel{display:none;height:calc(100vh - 44px)}
+.panel.active{display:flex;flex-direction:column}
+#terminal-panel{background:#000}
+#terminal{flex:1;background:#000;color:#0f0;border:none;outline:none;font-family:monospace;font-size:14px;padding:10px;resize:none;width:100%;tab-size:4}
+#terminal-output{flex:1;background:#000;color:#0f0;font-family:monospace;font-size:14px;padding:10px;overflow-y:auto;white-space:pre-wrap;word-wrap:break-word}
+#terminal-input-row{display:flex;background:#111;border-top:1px solid #0f03}
+#terminal-input{flex:1;background:#000;color:#0f0;border:none;outline:none;font-family:monospace;font-size:14px;padding:10px}
+#terminal-input-btn{background:#0f02;color:#0f0;border:1px solid#0f03;padding:10px 20px;cursor:pointer;font-family:monospace}
+#terminal-input-btn:hover{background:#0f04}
+.stream-container{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative}
+.stream-container img{max-width:100%;max-height:100%;object-fit:contain}
+.stream-placeholder{color:#060;font-size:18px}
+.stream-controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:10px}
+.stream-controls button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:8px 16px;cursor:pointer;font-family:monospace}
+.stream-controls button:hover{background:#0f04}
+.file-toolbar{display:flex;gap:10px;padding:10px;background:#111;border-bottom:1px solid #0f03;align-items:center}
+.file-toolbar input{flex:1;background:#000;color:#0f0;border:1px solid#0f03;padding:8px;font-family:monospace}
+.file-toolbar button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:8px 16px;cursor:pointer;font-family:monospace}
+.file-toolbar button:hover{background:#0f04}
+#file-list{flex:1;overflow-y:auto;padding:10px}
+.file-item{padding:6px 10px;cursor:pointer;display:flex;justify-content:space-between;align-items:center}
+.file-item:hover{background:#0f02}
+.file-item .name{color:#0f0}
+.file-item .name.dir{color:#0f0;font-weight:bold}
+.file-item .size{color:#060;font-size:12px}
+.file-item .actions button{background:none;color:#f00;border:none;cursor:pointer;font-family:monospace;margin-left:8px}
+.upload-zone{border:2px dashed #0f03;padding:20px;text-align:center;color:#060;margin:10px;cursor:pointer}
+.upload-zone:hover{border-color:#0f0;color:#0f0}
+#status{position:fixed;bottom:10px;right:10px;color:#060;font-size:12px}
+</style>
+</head>
+<body>
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('terminal')">[Terminal]</div>
+  <div class="tab" onclick="switchTab('screen')">[Ecran]</div>
+  <div class="tab" onclick="switchTab('webcam')">[Webcam]</div>
+  <div class="tab" onclick="switchTab('files')">[Fichiers]</div>
+</div>
+
+<div id="terminal-panel" class="panel active">
+  <div id="terminal-output"></div>
+  <div id="terminal-input-row">
+    <input id="terminal-input" placeholder="$ commande..." />
+    <button id="terminal-input-btn">EXEC</button>
+  </div>
+</div>
+
+<div id="screen-panel" class="panel">
+  <div class="stream-container">
+    <div class="stream-placeholder" id="screen-placeholder">[Cliquer pour démarrer le streaming]</div>
+    <img id="screen-image" style="display:none" />
+    <div class="stream-controls">
+      <button onclick="startScreen()">Démarrer</button>
+      <button onclick="stopScreen()">Arrêter</button>
+      <button onclick="captureScreen()">Capture</button>
+    </div>
+  </div>
+</div>
+
+<div id="webcam-panel" class="panel">
+  <div class="stream-container">
+    <div class="stream-placeholder" id="webcam-placeholder">[Cliquer pour démarrer la webcam]</div>
+    <img id="webcam-image" style="display:none" />
+    <div class="stream-controls">
+      <button onclick="startWebcam()">Démarrer</button>
+      <button onclick="stopWebcam()">Arrêter</button>
+      <button onclick="captureWebcam()">Capture</button>
+    </div>
+  </div>
+</div>
+
+<div id="files-panel" class="panel">
+  <div class="file-toolbar">
+    <span id="current-path" style="color:#060">/</span>
+    <button onclick="refreshFiles()">Rafraichir</button>
+    <button onclick="goUp()">..</button>
+  </div>
+  <div id="file-list"></div>
+  <div class="upload-zone" onclick="document.getElementById('file-upload').click()">
+    [+] Uploader un fichier
+    <input type="file" id="file-upload" style="display:none" onchange="uploadFile(this)" />
+  </div>
+</div>
+
+<div id="status"></div>
+
+<script>
+const socket = io({auth:{token:'{{password}}'}});
+let screenRunning = false, webcamRunning = false;
+let currentPath = '/home';
+
+function switchTab(name) {
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelector(`.tab[onclick*="${name}"]`).classList.add('active');
+  document.getElementById(name+'-panel').classList.add('active');
+  if(name==='files') refreshFiles();
+}
+
+// ====== TERMINAL ======
+const output = document.getElementById('terminal-output');
+const termInput = document.getElementById('terminal-input');
+
+function appendOutput(text) {
+  output.textContent += text;
+  output.scrollTop = output.scrollHeight;
+}
+
+socket.on('shell:data', (d) => {
+  appendOutput(d.data);
+});
+
+termInput.addEventListener('keydown', (e) => {
+  if(e.key === 'Enter' && termInput.value.trim()) {
+    const cmd = termInput.value + '\n';
+    appendOutput('$ ' + termInput.value + '\n');
+    socket.emit('shell:input', {data: cmd});
+    termInput.value = '';
+  }
+});
+
+document.getElementById('terminal-input-btn').onclick = () => {
+  const cmd = document.getElementById('terminal-input').value;
+  fetch('/api/exec', {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Authorization':'{{password}}'},
+    body:JSON.stringify({cmd})
+  }).then(r=>r.json()).then(d=>{
+    appendOutput('$ ' + cmd + '\n');
+    if(d.stdout) appendOutput(d.stdout);
+    if(d.stderr) appendOutput(d.stderr);
+    if(d.code !== 0) appendOutput('\n[code: ' + d.code + ']\n');
+  });
+  document.getElementById('terminal-input').value = '';
+};
+
+// ====== SCREEN ======
+const screenImg = document.getElementById('screen-image');
+const screenPlaceholder = document.getElementById('screen-placeholder');
+
+socket.on('screen:frame', (d) => {
+  screenImg.src = 'data:image/jpeg;base64,' + d.image;
+  screenImg.style.display = '';
+  screenPlaceholder.style.display = 'none';
+});
+
+function startScreen() {
+  if(screenRunning) return;
+  screenRunning = true;
+  socket.emit('start:screen');
+  screenPlaceholder.textContent = '[Streaming...]';
+}
+
+function stopScreen() {
+  screenRunning = false;
+  screenImg.style.display = 'none';
+  screenPlaceholder.style.display = '';
+  screenPlaceholder.textContent = '[Arrêté]';
+}
+
+function captureScreen() {
+  fetch('/api/screenshot', {headers:{'Authorization':'{{password}}'}})
+    .then(r=>r.json()).then(d=>{
+      if(d.image) {
+        screenImg.src = 'data:image/jpeg;base64,' + d.image;
+        screenImg.style.display = '';
+        screenPlaceholder.style.display = 'none';
+      }
+    });
+}
+
+// ====== WEBCAM ======
+const webcamImg = document.getElementById('webcam-image');
+const webcamPlaceholder = document.getElementById('webcam-placeholder');
+
+socket.on('webcam:frame', (d) => {
+  webcamImg.src = 'data:image/jpeg;base64,' + d.image;
+  webcamImg.style.display = '';
+  webcamPlaceholder.style.display = 'none';
+});
+
+function startWebcam() {
+  if(webcamRunning) return;
+  webcamRunning = true;
+  socket.emit('start:webcam');
+  webcamPlaceholder.textContent = '[Streaming...]';
+}
+
+function stopWebcam() {
+  webcamRunning = false;
+  webcamImg.style.display = 'none';
+  webcamPlaceholder.style.display = '';
+  webcamPlaceholder.textContent = '[Arrêté]';
+}
+
+function captureWebcam() {
+  fetch('/api/webcam', {headers:{'Authorization':'{{password}}'}})
+    .then(r=>r.json()).then(d=>{
+      if(d.image) {
+        webcamImg.src = 'data:image/jpeg;base64,' + d.image;
+        webcamImg.style.display = '';
+        webcamPlaceholder.style.display = 'none';
+      }
+    });
+}
+
+// ====== FILES ======
+function refreshFiles(dir) {
+  const path = dir || currentPath;
+  fetch('/api/ls?path=' + encodeURIComponent(path), {headers:{'Authorization':'{{password}}'}})
+    .then(r=>r.json()).then(d=>{
+      if(d.error) return;
+      currentPath = d.path;
+      document.getElementById('current-path').textContent = d.path;
+      const list = document.getElementById('file-list');
+      list.innerHTML = '';
+      d.items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'file-item';
+        const name = document.createElement('span');
+        name.className = 'name' + (item.type === 'dir' ? ' dir' : '');
+        name.textContent = (item.type === 'dir' ? '📁 ' : '📄 ') + item.name;
+        name.onclick = () => { if(item.type === 'dir') refreshFiles(d.path + '/' + item.name); };
+        div.appendChild(name);
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+        if(item.type === 'file') {
+          const size = document.createElement('span');
+          size.className = 'size';
+          size.textContent = formatBytes(item.size);
+          actions.appendChild(size);
+          const dl = document.createElement('button');
+          dl.textContent = '[DL]';
+          dl.onclick = () => window.open('/api/download?path=' + encodeURIComponent(d.path + '/' + item.name) + '&auth={{password}}');
+          actions.appendChild(dl);
+        }
+        const del = document.createElement('button');
+        del.textContent = '[X]';
+        del.onclick = () => {
+          if(confirm('Supprimer ' + item.name + '?'))
+            fetch('/api/delete', {method:'POST',headers:{'Content-Type':'application/json','Authorization':'{{password}}'},body:JSON.stringify({path: d.path + '/' + item.name})})
+              .then(() => refreshFiles(d.path));
+        };
+        actions.appendChild(del);
+        div.appendChild(actions);
+        list.appendChild(div);
+      });
+    });
+}
+
+function goUp() {
+  const parent = currentPath.split('/').slice(0,-1).join('/') || '/';
+  refreshFiles(parent);
+}
+
+function uploadFile(input) {
+  const file = input.files[0];
+  if(!file) return;
+  const formData = new FormData();
+  formData.append('file', file);
+  fetch('/api/upload?path=' + encodeURIComponent(currentPath) + '&auth={{password}}', {method:'POST',body:formData})
+    .then(() => { refreshFiles(currentPath); input.value = ''; });
+}
+
+function formatBytes(bytes) {
+  if(bytes < 1024) return bytes + 'B';
+  if(bytes < 1048576) return (bytes/1024).toFixed(1) + 'KB';
+  return (bytes/1048576).toFixed(1) + 'MB';
+}
+
+// ====== STATUS ======
+fetch('/api/info', {headers:{'Authorization':'{{password}}'}}).then(r=>r.json()).then(d=>{
+  document.getElementById('status').textContent = d.hostname + ' | ' + d.user;
+}).catch(()=>{});
+
+// Start file browser on load
+setTimeout(() => refreshFiles(), 500);
+</script>
+</body>
+</html>
