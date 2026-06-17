@@ -412,14 +412,12 @@ def on_remote_type(d): remote_type(d["text"])
 # ===== TUNNEL =====
 def tunnel_ssh(domain):
     global tunnel_url, tunnel_urls
-    tunnel_url = None
     print(f"[*] Tentative {domain}...")
     cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
            "-o", "ServerAliveInterval=30", "-o", "ConnectTimeout=10",
            "-R", "80:localhost:5000", domain]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-        found = threading.Event()
         def reader():
             for line in iter(proc.stdout.readline, ""):
                 line = line.strip()
@@ -428,22 +426,25 @@ def tunnel_ssh(domain):
                     u = m.group()
                     if not u.startswith("http"): u = "https://" + u
                     if u not in tunnel_urls: tunnel_urls.append(u)
-                    if not tunnel_url:
-                        if domain == "serveo.net" and "console." in u: continue
-                        tunnel_url = u
-                        print(f"[+] {domain} URL: {tunnel_url}")
-                        found.set()
-                        return
+                    if domain == "serveo.net" and "console." in u: continue
         t = threading.Thread(target=reader, daemon=True)
         t.start()
-        found.wait(timeout=15)
-        return tunnel_url
+        for _ in range(25):
+            if any(u for u in tunnel_urls if "console.serveo.net" not in u): break
+            time.sleep(1)
+        for u in tunnel_urls:
+            if "console.serveo.net" not in u:
+                tunnel_url = u
+                print(f"[+] {domain} URL: {tunnel_url}")
+                return tunnel_url
+        return None
     except Exception as e:
         print(f"[-] {domain} error: {e}")
         return None
 
 def tunnel_ngrok():
     global tunnel_url, tunnel_urls
+    if tunnel_url: return tunnel_url
     print("[*] Tentative ngrok...")
     try:
         subprocess.Popen(["ngrok", "http", str(PORT), "--log", "stdout"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -458,9 +459,10 @@ def tunnel_ngrok():
 def start_tunnel():
     global tunnel_url, tunnel_urls
     tunnel_urls = []
-    for domain in ["localhost.run", "serveo.net"]:
-        tunnel_url = tunnel_ssh(domain)
-        if tunnel_url: return tunnel_url
+    tunnel_url = tunnel_ssh("localhost.run")
+    if tunnel_url: return tunnel_url
+    tunnel_url = tunnel_ssh("serveo.net")
+    if tunnel_url: return tunnel_url
     return tunnel_ngrok()
 
 def send_webhook(url, extra_urls=None):
