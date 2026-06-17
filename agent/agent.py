@@ -29,11 +29,15 @@ def start_shell():
     global shell_fd, shell_pid
     pid, fd = pty.fork()
     if pid == 0:
-        os.environ["TERM"] = "xterm-256color"
-        os.execve("/bin/bash", ["/bin/bash"], os.environ)
+        os.environ["TERM"] = "dumb"
+        os.environ["PS1"] = "$ "
+        # Reset prompt via bashrc replacement
+        os.execve("/bin/bash", ["/bin/bash", "--norc"], os.environ)
     else:
         shell_fd = fd
         shell_pid = pid
+        # Force simple prompt
+        os.write(fd, b"export PS1='$ '\nexport TERM=dumb\n")
         threading.Thread(target=shell_reader, daemon=True).start()
 
 def shell_reader():
