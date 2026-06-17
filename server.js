@@ -23,11 +23,12 @@ app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false, maxAge: 24 * 60 * 60 * 1000 }
+  cookie: { secure: process.env.NODE_ENV === 'production', maxAge: 24 * 60 * 60 * 1000 }
 }));
 
 app.set('view engine', 'ejs');
 app.set('views', path.join(__dirname, 'views'));
+app.set('trust proxy', 1);
 
 app.use((req, res, next) => {
   res.locals.user = req.session.user || null;
@@ -224,7 +225,7 @@ app.get('/logout', (req, res) => {
   req.session.destroy(() => res.redirect('/'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Panel démarré sur http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Panel démarré sur le port ${PORT}`);
   console.log(`Redirect URI configurée: ${REDIRECT_URI}`);
 });
