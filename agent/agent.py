@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 import os, sys, json, base64, io, time, threading, signal, pty, select, struct, fcntl, termios
-import subprocess, requests, tempfile, shutil, mimetypes, re
+import subprocess, requests, tempfile, shutil, mimetypes, re, glob
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file, Response, abort
 from flask_socketio import SocketIO, emit
@@ -304,19 +304,31 @@ def api_info():
 @app.route("/api/sysinfo")
 def api_sysinfo():
     try:
-        mem = {}
-        with open("/proc/meminfo") as f:
-            for line in f:
-                if "MemTotal" in line: mem["total"] = int(line.split()[1])//1024
-                if "MemAvailable" in line: mem["avail"] = int(line.split()[1])//1024
-                if "SwapTotal" in line: mem["swap_total"] = int(line.split()[1])//1024
-                if "SwapFree" in line: mem["swap_free"] = int(line.split()[1])//1024
-        if "avail" in mem: mem["used"] = mem["total"] - mem["avail"]
-        disk = shutil.disk_usage("/")
-        cpu_model = os.popen("grep 'model name' /proc/cpuinfo | head -1").read().strip().split(":")[-1].strip() if os.path.exists("/proc/cpuinfo") else "N/A"
+        mem = {"total": 0, "used": 0, "avail": 0, "swap_total": 0, "swap_free": 0}
+        try:
+            with open("/proc/meminfo") as f:
+                for line in f:
+                    if "MemTotal" in line: mem["total"] = int(line.split()[1])//1024
+                    if "MemAvailable" in line: mem["avail"] = int(line.split()[1])//1024
+                    if "SwapTotal" in line: mem["swap_total"] = int(line.split()[1])//1024
+                    if "SwapFree" in line: mem["swap_free"] = int(line.split()[1])//1024
+            if mem["avail"]: mem["used"] = mem["total"] - mem["avail"]
+        except: pass
+        disk_info = {"total_gb": 0, "used_gb": 0, "free_gb": 0, "percent": 0}
+        try:
+            d = shutil.disk_usage("/")
+            disk_info = {"total_gb": round(d.total/(1024**3),1), "used_gb": round(d.used/(1024**3),1),
+                         "free_gb": round(d.free/(1024**3),1), "percent": round(d.used/d.total*100,1)}
+        except: pass
+        cpu_model = "N/A"
+        try:
+            r = subprocess.run(["grep", "model name", "/proc/cpuinfo"], capture_output=True, text=True, timeout=3)
+            if r.stdout.strip(): cpu_model = r.stdout.strip().split("\n")[0].split(":")[-1].strip()
+        except: pass
         cores = os.cpu_count() or 0
-        load = os.getloadavg() if hasattr(os, "getloadavg") else (0,0,0)
-        # Temperatures
+        load = (0,0,0)
+        try: load = os.getloadavg()
+        except: pass
         temps = []
         if os.path.exists("/sys/class/thermal"):
             for z in sorted(os.listdir("/sys/class/thermal")):
@@ -324,33 +336,33 @@ def api_sysinfo():
                     try:
                         t = open(f"/sys/class/thermal/{z}/temp").read().strip()
                         t_type = open(f"/sys/class/thermal/{z}/type").read().strip()
-                        temps.append({"zone": z, "type": t_type, "temp_c": round(int(t)/1000, 1) if t else 0})
+                        if t: temps.append({"zone": z, "type": t_type, "temp_c": round(int(t)/1000, 1)})
                     except: pass
-        # GPU temperature
         gpu_temp = None
         try:
             r = subprocess.run(["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader"],
-                               capture_output=True, text=True, timeout=5)
+                               capture_output=True, text=True, timeout=3)
             if r.stdout.strip(): gpu_temp = int(r.stdout.strip())
         except: pass
         if not gpu_temp and os.path.exists("/sys/class/drm"):
             try:
                 for d in os.listdir("/sys/class/drm"):
-                    p = f"/sys/class/drm/{d}/device/hwmon/hwmon*/temp1_input"
-                    import glob as gb
-                    for f in gb.glob(p):
+                    for f in glob.glob(f"/sys/class/drm/{d}/device/hwmon/hwmon*/temp1_input"):
                         t = open(f).read().strip()
                         if t: gpu_temp = round(int(t)/1000, 1)
             except: pass
-
+        proc_count = 0
+        try:
+            r = subprocess.run(["ps", "aux"], capture_output=True, text=True, timeout=5)
+            proc_count = len(r.stdout.strip().split("\n")) - 1
+            if proc_count < 0: proc_count = 0
+        except: pass
         return jsonify({
-            "memory": {"total_mb": mem.get("total", 0), "used_mb": mem.get("used", 0), "avail_mb": mem.get("avail", 0),
-                       "swap_total_mb": mem.get("swap_total", 0), "swap_free_mb": mem.get("swap_free", 0)},
-            "disk": {"total_gb": round(disk.total/(1024**3),1), "used_gb": round(disk.used/(1024**3),1),
-                     "free_gb": round(disk.free/(1024**3),1), "percent": round(disk.used/disk.total*100,1)},
+            "memory": mem,
+            "disk": disk_info,
             "cpu": {"model": cpu_model, "cores": cores, "load_1m": round(load[0],2), "load_5m": round(load[1],2), "load_15m": round(load[2],2)},
             "temperatures": {"cpu": temps, "gpu_c": gpu_temp},
-            "processes": len(os.popen("ps aux").read().split("\n")) - 1 if os.path.exists("/usr/bin/ps") else 0
+            "processes": proc_count
         })
     except Exception as e: return jsonify({"error": str(e)})
 
