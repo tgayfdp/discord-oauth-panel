@@ -20,12 +20,16 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
 #terminal-input{flex:1;background:#000;color:#0f0;border:none;outline:none;font-family:monospace;font-size:13px;padding:10px}
 #terminal-input-btn{background:#0f02;color:#0f0;border:1px solid#0f03;padding:10px 16px;cursor:pointer;font-family:monospace;font-size:13px}
 #terminal-input-btn:hover{background:#0f04}
-.stream-container{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative}
-.stream-container img{max-width:100%;max-height:100%;object-fit:contain}
+.stream-container{flex:1;display:flex;align-items:center;justify-content:center;background:#000;position:relative;overflow:hidden}
+.stream-container img{max-width:100%;max-height:100%;object-fit:contain;cursor:default}
+.stream-container img.remote-active{cursor:crosshair}
 .stream-placeholder{color:#060;font-size:16px}
-.stream-controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:8px}
+.stream-controls{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);display:flex;gap:8px;z-index:10}
 .stream-controls button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:8px 14px;cursor:pointer;font-family:monospace;font-size:12px}
 .stream-controls button:hover{background:#0f04}
+.stream-controls button.active-remote{background:#0f0;color:#000}
+#remote-status{position:absolute;top:10px;left:10px;color:#0f0;font-size:12px;background:#000a;padding:4px 10px;border-radius:4px;z-index:10;display:none}
+#remote-cursor{position:absolute;pointer-events:none;z-index:5;display:none;width:4px;height:4px;background:#0f0;border:1px solid #000;border-radius:50%}
 .file-toolbar{display:flex;gap:8px;padding:8px 10px;background:#111;border-bottom:1px solid #0f03;align-items:center;flex-wrap:wrap}
 .file-toolbar input{flex:1;min-width:100px;background:#000;color:#0f0;border:1px solid#0f03;padding:6px 8px;font-family:monospace;font-size:12px}
 .file-toolbar button{background:#0f02;color:#0f0;border:1px solid#0f03;padding:6px 12px;cursor:pointer;font-family:monospace;font-size:12px}
@@ -67,13 +71,16 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
 </div>
 
 <div id="screen-panel" class="panel">
-  <div class="stream-container">
+  <div class="stream-container" id="screen-container">
     <div class="stream-placeholder" id="screen-placeholder">[Cliquer pour démarrer le streaming ecran]</div>
     <img id="screen-image" style="display:none" />
+    <div id="remote-cursor"></div>
+    <div id="remote-status">Remote: OFF</div>
     <div class="stream-controls">
       <button onclick="startScreen()">Stream</button>
       <button onclick="stopScreen()">Stop</button>
       <button onclick="captureScreen()">Capture</button>
+      <button id="remote-toggle" onclick="toggleRemote()">Remote: OFF</button>
     </div>
   </div>
 </div>
@@ -119,9 +126,10 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
 <script>
 const PASSWORD = '{{password}}';
 const socket = io({auth:{token:PASSWORD}});
-let screenRunning = false, webcamRunning = false;
+let screenRunning = false, webcamRunning = false, remoteActive = false;
 let currentPath = '/home';
 let editingPath = '';
+let screenW = 1920, screenH = 1080;
 
 function authHeaders() {
   return {'Authorization': PASSWORD};
@@ -149,7 +157,6 @@ socket.on('shell:data', (d) => {
   appendOutput(d.data);
 });
 
-// Enter key for shell input
 termInput.addEventListener('keydown', (e) => {
   if(e.key === 'Enter' && termInput.value.trim()) {
     appendOutput('$ ' + termInput.value + '\n');
@@ -158,7 +165,6 @@ termInput.addEventListener('keydown', (e) => {
   }
 });
 
-// Quick exec button
 document.getElementById('terminal-input-btn').onclick = () => {
   const cmd = document.getElementById('terminal-input').value;
   if(!cmd.trim()) return;
@@ -175,9 +181,13 @@ document.getElementById('terminal-input-btn').onclick = () => {
   document.getElementById('terminal-input').value = '';
 };
 
-// ====== SCREEN ======
+// ====== SCREEN STREAM ======
 const screenImg = document.getElementById('screen-image');
+const screenContainer = document.getElementById('screen-container');
 const screenPlaceholder = document.getElementById('screen-placeholder');
+const remoteCursor = document.getElementById('remote-cursor');
+const remoteStatus = document.getElementById('remote-status');
+const remoteToggle = document.getElementById('remote-toggle');
 
 socket.on('screen:frame', (d) => {
   screenImg.src = 'data:image/jpeg;base64,' + d.image;
@@ -209,6 +219,99 @@ function captureScreen() {
       }
     });
 }
+
+// ====== REMOTE CONTROL (TeamViewer-like) ======
+function toggleRemote() {
+  remoteActive = !remoteActive;
+  if(remoteActive) {
+    remoteToggle.textContent = 'Remote: ON';
+    remoteToggle.classList.add('active-remote');
+    remoteStatus.textContent = 'Remote: ON';
+    remoteStatus.style.display = 'block';
+    screenImg.classList.add('remote-active');
+  } else {
+    remoteToggle.textContent = 'Remote: OFF';
+    remoteToggle.classList.remove('active-remote');
+    remoteStatus.style.display = 'none';
+    screenImg.classList.remove('remote-active');
+    remoteCursor.style.display = 'none';
+  }
+}
+
+function getRemoteCoords(clientX, clientY) {
+  const rect = screenImg.getBoundingClientRect();
+  const imgX = clientX - rect.left;
+  const imgY = clientY - rect.top;
+  const scaleX = screenW / rect.width;
+  const scaleY = screenH / rect.height;
+  return {
+    x: Math.round(imgX * scaleX),
+    y: Math.round(imgY * scaleY),
+    imgX, imgY
+  };
+}
+
+// Mouse move on screen image
+screenImg.addEventListener('mousemove', (e) => {
+  if(!remoteActive || !screenRunning) return;
+  const coords = getRemoteCoords(e.clientX, e.clientY);
+  remoteCursor.style.display = 'block';
+  remoteCursor.style.left = (coords.imgX - 2) + 'px';
+  remoteCursor.style.top = (coords.imgY - 2) + 'px';
+  socket.emit('remote:mousemove', {x: coords.x, y: coords.y});
+});
+
+// Click events
+screenImg.addEventListener('mousedown', (e) => {
+  if(!remoteActive || !screenRunning) return;
+  e.preventDefault();
+  const btn = ['left', 'middle', 'right'][e.button] || 'left';
+  const coords = getRemoteCoords(e.clientX, e.clientY);
+  socket.emit('remote:mousemove', {x: coords.x, y: coords.y});
+  socket.emit('remote:mousedown', {button: btn});
+});
+
+screenImg.addEventListener('mouseup', (e) => {
+  if(!remoteActive || !screenRunning) return;
+  e.preventDefault();
+  const btn = ['left', 'middle', 'right'][e.button] || 'left';
+  socket.emit('remote:mouseup', {button: btn});
+});
+
+screenImg.addEventListener('wheel', (e) => {
+  if(!remoteActive || !screenRunning) return;
+  e.preventDefault();
+  const key = e.deltaY < 0 ? 'Page_Up' : 'Page_Down';
+  socket.emit('remote:key', {key});
+});
+
+// Mouse leave
+screenImg.addEventListener('mouseleave', () => {
+  remoteCursor.style.display = 'none';
+});
+
+// Keyboard for remote typing
+document.addEventListener('keydown', (e) => {
+  if(!remoteActive || !screenRunning) return;
+  if(e.ctrlKey || e.metaKey || e.altKey) return;
+
+  const keyMap = {
+    'Enter': 'Return', 'Backspace': 'BackSpace', 'Tab': 'Tab',
+    'Escape': 'Escape', 'Delete': 'Delete', 'Home': 'Home',
+    'End': 'End', 'PageUp': 'Page_Up', 'PageDown': 'Page_Down',
+    'ArrowUp': 'Up', 'ArrowDown': 'Down', 'ArrowLeft': 'Left', 'ArrowRight': 'Right',
+    'F1':'F1','F2':'F2','F3':'F3','F4':'F4','F5':'F5','F6':'F6',
+    'F7':'F7','F8':'F8','F9':'F9','F10':'F10','F11':'F11','F12':'F12'
+  };
+
+  const key = keyMap[e.key];
+  if(key) {
+    e.preventDefault();
+    socket.emit('remote:key', {key});
+  } else if(e.key.length === 1) {
+    socket.emit('remote:type', {text: e.key});
+  }
+});
 
 // ====== WEBCAM ======
 const webcamImg = document.getElementById('webcam-image');
@@ -358,9 +461,9 @@ function formatBytes(bytes) {
 // ====== STATUS ======
 fetch('/api/info', {headers:authHeaders()}).then(r=>r.json()).then(d=>{
   document.getElementById('status').textContent = d.hostname + ' | ' + d.user + ' | ' + (d.ip||'');
+  if(d.screen_w) { screenW = d.screen_w; screenH = d.screen_h; }
 }).catch(()=>{});
 
-// Init files
 setTimeout(() => refreshFiles(), 500);
 </script>
 </body>
