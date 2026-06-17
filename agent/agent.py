@@ -443,9 +443,8 @@ def tunnel_ssh(domain):
 def start_tunnel():
     global tunnel_url, tunnel_urls
     tunnel_urls = []
-    for domain in ["serveo.net", "localhost.run"]:
-        tunnel_url = tunnel_ssh(domain)
-        if tunnel_url: return tunnel_url
+    tunnel_url = tunnel_ssh("serveo.net")
+    if tunnel_url: return tunnel_url
     return None
 
 def send_webhook(url, extra_urls=None):
