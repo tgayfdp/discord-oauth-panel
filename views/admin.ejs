@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administration - <%= title %></title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+    }
+    .navbar {
+      background: #16213e;
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #0f3460;
+    }
+    .navbar h2 { color: #fff; }
+    .navbar a { color: #aaa; text-decoration: none; }
+    .navbar a:hover { color: #fff; }
+    .container { max-width: 1100px; margin: 2rem auto; padding: 0 1rem; }
+    .card {
+      background: #16213e;
+      border-radius: 12px;
+      padding: 2rem;
+      border: 1px solid #0f3460;
+      margin-bottom: 1.5rem;
+    }
+    .card h2 { margin-bottom: 1rem; color: #fff; }
+    .card p { color: #aaa; margin-bottom: 1rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; margin-bottom: 0.5rem; color: #aaa; }
+    .form-group input {
+      width: 100%;
+      max-width: 400px;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #0f3460;
+      background: #1a1a2e;
+      color: #fff;
+      font-size: 1rem;
+    }
+    .btn {
+      padding: 10px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background 0.2s;
+    }
+    .btn-primary { background: #5865F2; color: #fff; }
+    .btn-primary:hover { background: #4752C4; }
+    .btn-danger { background: #ed4245; color: #fff; }
+    .btn-danger:hover { background: #c93235; }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #16213e;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #0f3460;
+    }
+    th, td {
+      padding: 12px 16px;
+      text-align: left;
+      border-bottom: 1px solid #0f3460;
+    }
+    th { background: #0f3460; color: #5865F2; font-weight: 600; }
+    td { color: #ccc; }
+    tr:hover td { background: #1a1a3e; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 0.8rem;
+    }
+    .badge-email { background: #5865F2; color: #fff; }
+    .badge-success { background: #3ba55c; color: #fff; }
+    .badge-danger { background: #ed4245; color: #fff; }
+    .btn-sm {
+      padding: 4px 12px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    .btn-danger-sm { background: #ed4245; color: #fff; }
+    .btn-danger-sm:hover { background: #c93235; }
+    .empty { text-align: center; padding: 3rem; color: #666; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .stat {
+      background: #16213e;
+      padding: 1.5rem;
+      border-radius: 10px;
+      text-align: center;
+      border: 1px solid #0f3460;
+    }
+    .stat h3 { font-size: 2rem; color: #5865F2; }
+    .stat p { color: #aaa; font-size: 0.9rem; }
+    .message {
+      padding: 12px;
+      border-radius: 6px;
+      margin-top: 1rem;
+      display: none;
+    }
+    .message.info { display: block; background: #5865F2; color: #fff; }
+    .message.success { display: block; background: #3ba55c; color: #fff; }
+    .message.error { display: block; background: #ed4245; color: #fff; }
+    .log-container {
+      max-height: 400px;
+      overflow-y: auto;
+      background: #1a1a2e;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-top: 1rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+    }
+    .log-entry { padding: 4px 0; border-bottom: 1px solid #0f3460; }
+    .log-entry:last-child { border-bottom: none; }
+    .log-ok { color: #3ba55c; }
+    .log-fail { color: #ed4245; }
+    .progress-bar {
+      height: 6px;
+      background: #0f3460;
+      border-radius: 3px;
+      margin-top: 1rem;
+      overflow: hidden;
+      display: none;
+    }
+    .progress-bar div {
+      height: 100%;
+      width: 0%;
+      background: #3ba55c;
+      transition: width 0.3s;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <h2>Panel Admin</h2>
+    <div>
+      <a href="/dashboard" style="margin-right:1rem">Dashboard</a>
+      <a href="/logout">Déconnexion</a>
+    </div>
+  </nav>
+  <div class="container">
+    <div class="stats">
+      <div class="stat">
+        <h3><%= users.length %></h3>
+        <p>Utilisateurs</p>
+      </div>
+      <div class="stat">
+        <h3><%= users.filter(u => u.email).length %></h3>
+        <p>Avec email</p>
+      </div>
+      <div class="stat">
+        <h3><%= users.filter(u => u.guilds_joined && u.guilds_joined !== '[]').length %></h3>
+        <p>Ont rejoint un serveur</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Mass Join</h2>
+      <p>Ajoute tous les utilisateurs enregistrés à un serveur Discord en une seule action.</p>
+      <div class="form-group">
+        <label for="guildId">ID du serveur (Guild ID)</label>
+        <input type="text" id="guildId" placeholder="Ex: 123456789012345678">
+      </div>
+      <button class="btn btn-primary" id="massJoinBtn" onclick="massJoin()">Lancer le Mass Join</button>
+      <div id="message" class="message"></div>
+      <div class="progress-bar" id="progressBar"><div id="progressFill"></div></div>
+      <div class="log-container" id="logContainer" style="display:none"></div>
+    </div>
+
+    <% if (users.length > 0) { %>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Email</th>
+            <th>Serveurs rejoints</th>
+            <th>Inscrit le</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% users.forEach(function(u) { %>
+            <tr>
+              <td><code><%= u.id %></code></td>
+              <td><%= u.username %></td>
+              <td>
+                <% if (u.email) { %>
+                  <span class="badge badge-email"><%= u.email %></span>
+                <% } else { %>
+                  <span style="color:#666">—</span>
+                <% } %>
+              </td>
+              <td>
+                <% const guilds = JSON.parse(u.guilds_joined || '[]'); %>
+                <%= guilds.length > 0 ? guilds.length : '0' %>
+              </td>
+              <td><%= new Date(u.created_at).toLocaleDateString('fr-FR') %></td>
+              <td>
+                <form method="POST" action="/admin/delete/<%= u.id %>" onsubmit="return confirm('Supprimer cet utilisateur?')" style="display:inline">
+                  <button class="btn-sm btn-danger-sm">Supprimer</button>
+                </form>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    <% } else { %>
+      <p class="empty">Aucun utilisateur enregistré</p>
+    <% } %>
+  </div>
+
+  <script>
+    async function massJoin() {
+      const guildId = document.getElementById('guildId').value.trim();
+      const btn = document.getElementById('massJoinBtn');
+      const msg = document.getElementById('message');
+      const logContainer = document.getElementById('logContainer');
+      const progressBar = document.getElementById('progressBar');
+      const progressFill = document.getElementById('progressFill');
+
+      if (!guildId) {
+        msg.className = 'message error';
+        msg.textContent = 'Veuillez entrer un ID de serveur';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Mass join en cours...';
+      msg.className = 'message';
+      msg.textContent = '';
+      logContainer.style.display = 'block';
+      logContainer.innerHTML = '<div class="log-entry">Début du mass join...</div>';
+      progressBar.style.display = 'block';
+      progressFill.style.width = '0%';
+
+      try {
+        const res = await fetch('/admin/mass-join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guild_id: guildId })
+        });
+
+        const data = await res.json();
+        progressFill.style.width = '100%';
+
+        if (res.ok) {
+          let logHtml = '';
+          data.results.forEach((r, i) => {
+            const cls = r.ok ? 'log-ok' : 'log-fail';
+            const text = r.ok ? '✔ Rejoint' : `✖ ${r.error}`;
+            logHtml += `<div class="log-entry ${cls}">${i+1}. ${r.username} (${r.id}) — ${text}</div>`;
+          });
+          logHtml += `<div class="log-entry" style="color:#aaa;font-weight:bold">
+            Terminé — ${data.success} succès, ${data.fail} échecs
+          </div>`;
+          logContainer.innerHTML = logHtml;
+
+          msg.className = data.fail === 0 ? 'message success' : 'message info';
+          msg.textContent = `${data.success} utilisateur(s) rejoint(s), ${data.fail} échec(s)`;
+        } else {
+          msg.className = 'message error';
+          msg.textContent = data.error || 'Erreur inconnue';
+        }
+      } catch (err) {
+        msg.className = 'message error';
+        msg.textContent = 'Erreur de connexion au serveur';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Lancer le Mass Join';
+      }
+    }
+  </script>
+</body>
+</html>
