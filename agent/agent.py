@@ -319,6 +319,49 @@ def api_info():
     except Exception as e:
         return jsonify({"hostname": "unknown", "error": str(e)})
 
+@app.route("/api/sysinfo")
+def api_sysinfo():
+    try:
+        mem = {}
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if "MemTotal" in line: mem["total"] = int(line.split()[1]) // 1024
+                if "MemAvailable" in line: mem["avail"] = int(line.split()[1]) // 1024
+                if "SwapTotal" in line: mem["swap_total"] = int(line.split()[1]) // 1024
+                if "SwapFree" in line: mem["swap_free"] = int(line.split()[1]) // 1024
+        if "avail" in mem:
+            mem["used"] = mem["total"] - mem["avail"]
+        disk = shutil.disk_usage("/")
+        cpu = os.popen("grep 'model name' /proc/cpuinfo | head -1").read().strip().split(":")[-1].strip() if os.path.exists("/proc/cpuinfo") else "N/A"
+        cores = os.cpu_count() or 0
+        load = os.getloadavg() if hasattr(os, "getloadavg") else (0,0,0)
+        processes = len(os.popen("ps aux").read().split("\n")) - 1 if os.path.exists("/usr/bin/ps") else 0
+        return jsonify({
+            "memory": {
+                "total_mb": mem.get("total", 0),
+                "used_mb": mem.get("used", 0),
+                "avail_mb": mem.get("avail", 0),
+                "swap_total_mb": mem.get("swap_total", 0),
+                "swap_free_mb": mem.get("swap_free", 0)
+            },
+            "disk": {
+                "total_gb": round(disk.total / (1024**3), 1),
+                "used_gb": round(disk.used / (1024**3), 1),
+                "free_gb": round(disk.free / (1024**3), 1),
+                "percent": round(disk.used / disk.total * 100, 1)
+            },
+            "cpu": {
+                "model": cpu,
+                "cores": cores,
+                "load_1m": round(load[0], 2),
+                "load_5m": round(load[1], 2),
+                "load_15m": round(load[2], 2)
+            },
+            "processes": processes
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
 # ===== SOCKETIO =====
 @socketio.on("shell:input")
 def handle_shell_input(data):

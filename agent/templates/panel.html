@@ -60,6 +60,7 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
   <div class="tab" onclick="switchTab('screen')">[Ecran]</div>
   <div class="tab" onclick="switchTab('webcam')">[Webcam]</div>
   <div class="tab" onclick="switchTab('files')">[Fichiers]</div>
+  <div class="tab" onclick="switchTab('system')">[Systeme]</div>
 </div>
 
 <div id="terminal-panel" class="panel active">
@@ -121,6 +122,15 @@ body{font-family:monospace;background:#0a0a0a;color:#0f0;height:100vh;overflow:h
   <textarea id="editor-text" spellcheck="false"></textarea>
 </div>
 
+<div id="system-panel" class="panel">
+  <div style="flex:1;overflow-y:auto;padding:16px;font-size:13px">
+    <div id="sys-info" style="color:#060;text-align:center;padding:40px">Chargement...</div>
+  </div>
+  <div style="padding:8px;border-top:1px solid #0f03;background:#111;text-align:center">
+    <button onclick="loadSysInfo()" style="background:#0f02;color:#0f0;border:1px solid#0f03;padding:6px 12px;cursor:pointer;font-family:monospace;font-size:12px">Rafraichir</button>
+  </div>
+</div>
+
 <div id="status"></div>
 
 <script>
@@ -142,6 +152,7 @@ function switchTab(name) {
   if(tab) tab.classList.add('active');
   document.getElementById(name+'-panel').classList.add('active');
   if(name==='files') refreshFiles();
+  if(name==='system') loadSysInfo();
 }
 
 // ====== TERMINAL ======
@@ -456,6 +467,57 @@ function formatBytes(bytes) {
   if(bytes < 1024) return bytes + ' B';
   if(bytes < 1048576) return (bytes/1024).toFixed(1) + ' KB';
   return (bytes/1048576).toFixed(1) + ' MB';
+}
+
+// ====== SYSTEM INFO ======
+function loadSysInfo() {
+  const el = document.getElementById('sys-info');
+  el.innerHTML = 'Chargement...';
+  el.style.color = '#060';
+  fetch('/api/sysinfo', {headers:authHeaders()})
+    .then(r=>r.json()).then(d=>{
+      if(d.error) {
+        el.innerHTML = 'Erreur: ' + d.error;
+        el.style.color = '#f00';
+        return;
+      }
+      let html = '';
+      // RAM
+      const memPct = d.memory.total_mb > 0 ? (d.memory.used_mb / d.memory.total_mb * 100).toFixed(1) : 0;
+      html += '<div style="margin-bottom:16px">';
+      html += '<div style="color:#0f0;font-weight:bold;margin-bottom:6px">💾 MEMOIRE (RAM)</div>';
+      html += '<div style="color:#aaa">Total: <b style="color:#0f0">' + d.memory.total_mb + ' MB</b></div>';
+      html += '<div style="color:#aaa">Utilise: <b style="color:' + (memPct > 80 ? '#f00' : '#0f0') + '">' + d.memory.used_mb + ' MB</b></div>';
+      html += '<div style="color:#aaa">Disponible: <b style="color:#0f0">' + d.memory.avail_mb + ' MB</b></div>';
+      html += '<div style="background:#111;height:16px;border-radius:8px;margin-top:4px;overflow:hidden;border:1px solid #0f03"><div style="width:' + memPct + '%;height:100%;background:' + (memPct > 80 ? '#f00' : '#0f0') + ';transition:width 0.3s"></div></div>';
+      if(d.memory.swap_total_mb > 0) {
+        html += '<div style="color:#aaa;margin-top:4px">Swap: ' + d.memory.swap_free_mb + '/' + d.memory.swap_total_mb + ' MB</div>';
+      }
+      html += '</div>';
+      // DISK
+      html += '<div style="margin-bottom:16px">';
+      html += '<div style="color:#0f0;font-weight:bold;margin-bottom:6px">💽 DISQUE</div>';
+      html += '<div style="color:#aaa">Total: <b style="color:#0f0">' + d.disk.total_gb + ' GB</b></div>';
+      html += '<div style="color:#aaa">Utilise: <b style="color:' + (d.disk.percent > 80 ? '#f00' : '#0f0') + '">' + d.disk.used_gb + ' GB</b></div>';
+      html += '<div style="color:#aaa">Libre: <b style="color:#0f0">' + d.disk.free_gb + ' GB</b></div>';
+      html += '<div style="background:#111;height:16px;border-radius:8px;margin-top:4px;overflow:hidden;border:1px solid #0f03"><div style="width:' + d.disk.percent + '%;height:100%;background:' + (d.disk.percent > 80 ? '#f00' : '#0f0') + ';transition:width 0.3s"></div></div>';
+      html += '</div>';
+      // CPU
+      html += '<div style="margin-bottom:16px">';
+      html += '<div style="color:#0f0;font-weight:bold;margin-bottom:6px">⚡ CPU</div>';
+      html += '<div style="color:#aaa">Modele: <b style="color:#0f0;font-size:11px">' + d.cpu.model + '</b></div>';
+      html += '<div style="color:#aaa">Coeurs: <b style="color:#0f0">' + d.cpu.cores + '</b></div>';
+      html += '<div style="color:#aaa">Charge: 1m: <b style="color:#0f0">' + d.cpu.load_1m + '</b> | 5m: <b style="color:#0f0">' + d.cpu.load_5m + '</b> | 15m: <b style="color:#0f0">' + d.cpu.load_15m + '</b></div>';
+      html += '</div>';
+      // Processus
+      html += '<div style="color:#aaa">Processus actifs: <b style="color:#0f0">' + d.processes + '</b></div>';
+      el.innerHTML = html;
+      el.style.color = '#0f0';
+      el.style.textAlign = 'left';
+    }).catch(() => {
+      el.innerHTML = 'Erreur de connexion';
+      el.style.color = '#f00';
+    });
 }
 
 // ====== STATUS ======
