@@ -426,14 +426,13 @@ def tunnel_ssh(domain):
                     u = m.group()
                     if not u.startswith("http"): u = "https://" + u
                     if u not in tunnel_urls: tunnel_urls.append(u)
-                    if domain == "serveo.net" and "console." in u: continue
         t = threading.Thread(target=reader, daemon=True)
         t.start()
         for _ in range(25):
-            if any(u for u in tunnel_urls if "console.serveo.net" not in u): break
+            if any(u for u in tunnel_urls if not any(u.startswith(f"https://{x}.") for x in ("admin", "console", "www", "app"))): break
             time.sleep(1)
         for u in tunnel_urls:
-            if "console.serveo.net" not in u:
+            if not any(u.startswith(f"https://{x}.") for x in ("admin", "console", "www", "app")):
                 tunnel_url = u
                 print(f"[+] {domain} URL: {tunnel_url}")
                 return tunnel_url
@@ -459,8 +458,6 @@ def tunnel_ngrok():
 def start_tunnel():
     global tunnel_url, tunnel_urls
     tunnel_urls = []
-    tunnel_url = tunnel_ssh("localhost.run")
-    if tunnel_url: return tunnel_url
     tunnel_url = tunnel_ssh("serveo.net")
     if tunnel_url: return tunnel_url
     return tunnel_ngrok()
